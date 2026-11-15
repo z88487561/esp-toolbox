@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鍵盤設定</title>
+<style>
+  :root {
+    --bg:#f5f7fa; --white:#fff; --border:#e2e8f0;
+    --text:#1a202c; --text-sub:#718096;
+    --accent:#4f46e5; --accent-light:#eef2ff;
+    --success:#059669; --success-light:#ecfdf5;
+    --warn:#d97706; --warn-light:#fffbeb;
+    --layer0:#4f46e5; --layer1:#0284c7; --layer2:#7c3aed;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;
+         background:var(--bg); color:var(--text); min-height:100vh; }
+
+  /* Header */
+  .header {
+    background:var(--white); border-bottom:1px solid var(--border);
+    padding:16px 24px; display:flex; align-items:center; justify-content:space-between;
+    position:sticky; top:0; z-index:10;
+  }
+  .header-left { display:flex; align-items:center; gap:12px; }
+  .logo { width:36px; height:36px; background:var(--accent); border-radius:8px;
+          display:flex; align-items:center; justify-content:center; font-size:18px; color:white; }
+  .header h1 { font-size:1rem; font-weight:700; }
+  .header p  { font-size:0.78rem; color:var(--text-sub); margin-top:1px; }
+  .status-pill {
+    display:flex; align-items:center; gap:8px; padding:8px 16px;
+    border-radius:999px; font-size:0.82rem; font-weight:500;
+    border:1.5px solid var(--border); background:var(--white);
+    cursor:pointer; transition:all 0.2s; white-space:nowrap;
+  }
+  .status-pill:hover { border-color:var(--accent); color:var(--accent); }
+  .status-pill.connected { border-color:var(--success); color:var(--success); background:var(--success-light); }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--text-sub); flex-shrink:0; }
+  .connected .dot { background:var(--success); box-shadow:0 0 0 3px rgba(5,150,105,0.2); }
+
+  .main { max-width:760px; margin:0 auto; padding:24px 20px 100px; }
+
+  /* Connect screen */
+  #connectScreen { text-align:center; padding:60px 20px; background:var(--white);
+                   border:1px solid var(--border); border-radius:16px; }
+  .connect-icon { font-size:3rem; margin-bottom:16px; }
+  #connectScreen h2 { font-size:1.2rem; margin-bottom:8px; }
+  #connectScreen p { color:var(--text-sub); font-size:0.88rem; line-height:1.8; margin-bottom:24px; }
+  .btn-primary {
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--accent); color:white; border:none;
+    padding:12px 28px; border-radius:8px; font-size:0.95rem;
+    font-weight:600; font-family:inherit; cursor:pointer; transition:all 0.2s;
+  }
+  .btn-primary:hover { background:#4338ca; transform:translateY(-1px); }
+  .note { margin-top:20px; font-size:0.78rem; color:var(--text-sub);
+          padding:10px 16px; background:#fffbeb; border:1px solid #fde68a;
+          border-radius:8px; display:inline-block; }
+
+  #editor { display:none; }
+
+  .pin-card {
+    background:var(--white); border:1px solid var(--border); border-radius:10px;
+    padding:16px 20px; margin-bottom:20px;
+  }
+  .pin-header { font-size:0.85rem; font-weight:700; color:var(--text); margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+  .pin-desc { font-size:0.78rem; color:var(--text-sub); margin-bottom:12px; line-height:1.4; }
+  .pin-input-group { display:flex; gap:8px; }
+  .pin-input {
+    flex:1; padding:8px 12px; border:1px solid var(--border); border-radius:6px;
+    font-size:0.85rem; font-family:inherit; outline:none; background:var(--bg); color:var(--text);
+  }
+  .pin-input:focus { border-color:var(--accent); background:white; }
+
+  .layer-tabs {
+    display:flex; gap:6px; margin-bottom:20px; margin-top:20px;
+    border-bottom:2px solid var(--border); padding-bottom:0;
+  }
+  .layer-tab {
+    padding:8px 20px; border-radius:8px 8px 0 0; font-size:0.85rem; font-weight:600;
+    border:1.5px solid transparent; border-bottom:none; cursor:pointer;
+    background:var(--bg); color:var(--text-sub); transition:all 0.15s;
+    margin-bottom:-2px;
+  }
+  .layer-tab.active { background:var(--white); color:var(--accent);
+                      border-color:var(--border); border-bottom-color:var(--white); }
+  .layer-tab[data-layer="0"].active { color:var(--layer0); }
+  .layer-tab[data-layer="1"].active { color:var(--layer1); }
+  .layer-tab[data-layer="2"].active { color:var(--layer2); }
+  .layer-tab[data-layer="3"].active { color:#b45309; }
+
+  .section-header { display:flex; align-items:center; justify-content:space-between;
+                    margin-top:20px; margin-bottom:10px; }
+  .section-label { font-size:0.72rem; font-weight:700; letter-spacing:0.1em;
+                   text-transform:uppercase; color:var(--text-sub); }
+  .btn-sm { font-size:0.75rem; color:var(--text-sub); background:transparent;
+            border:1px solid var(--border); padding:4px 10px; border-radius:5px;
+            font-family:inherit; cursor:pointer; transition:all 0.2s; }
+  .btn-sm:hover { border-color:var(--accent); color:var(--accent); }
+
+  .io-bar {
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    margin-bottom:16px; padding:10px 14px;
+    background:var(--white); border:1px solid var(--border); border-radius:10px;
+  }
+  .io-bar-label { font-size:0.78rem; color:var(--text-sub); font-weight:600; margin-right:4px; }
+  .btn-io {
+    font-size:0.8rem; font-family:inherit; cursor:pointer;
+    padding:6px 12px; border-radius:6px; border:1px solid var(--border);
+    background:var(--white); color:var(--text); transition:all 0.2s; white-space:nowrap;
+  }
+  .btn-io:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-light); }
+  .btn-io.import { border-color:#0284c7; color:#0284c7; }
+  .btn-io.import:hover { background:#e0f2fe; }
+  #importFileInput { display:none; }
+
+  /* Macro Helper Styles */
+  .macro-guide {
+    background:var(--white); border:1px solid var(--border); border-radius:10px;
+    padding:12px 16px; margin-bottom:20px; font-size:0.78rem; color:var(--text-sub);
+  }
+  .macro-guide summary { cursor:pointer; font-weight:700; color:var(--text); font-size:0.85rem; }
+  .macro-guide table { width:100%; border-collapse:collapse; margin-top:10px; }
+  .macro-guide th, .macro-guide td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+  .macro-guide th { background:var(--bg); font-weight:600; }
+  .macro-guide code { background:var(--bg); padding:2px 5px; border-radius:4px; font-family:monospace; color:var(--warn); font-weight:600; }
+
+  .macro-quick-tags {
+    display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; margin-bottom:6px;
+  }
+  .macro-tag-btn {
+    font-size:0.68rem; font-family:inherit; background:var(--accent-light); color:var(--accent);
+    border:1px solid #c7d2fe; border-radius:4px; padding:2px 6px; cursor:pointer; transition:all 0.15s;
+  }
+  .macro-tag-btn:hover { background:#c7d2fe; }
+
+  .key-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  @media (max-width:550px) { .key-grid { grid-template-columns:repeat(1,1fr); } }
+
+  .key-card {
+    background:var(--white); border:1.5px solid var(--border); border-radius:10px;
+    padding:12px 10px; transition:border-color 0.2s;
+  }
+  .key-card:focus-within { border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,70,229,0.08); }
+  .key-card.changed { border-color:var(--accent); }
+  .key-badge { display:inline-block; font-size:0.68rem; font-weight:700;
+               background:var(--accent-light); color:var(--accent);
+               border-radius:4px; padding:2px 6px; margin-bottom:8px; }
+  .gpio-tag { display:inline-block; font-size:0.62rem; color:var(--text-sub);
+              margin-left:4px; }
+
+  .tap-hold-wrap { display:flex; flex-direction:column; gap:6px; }
+  .tap-hold-row { display:flex; align-items:center; gap:5px; }
+  .th-label { font-size:0.6rem; font-weight:700; color:var(--text-sub);
+              width:28px; flex-shrink:0; text-transform:uppercase; }
+  .th-label.hold { color:var(--warn); }
+
+  select {
+    width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+    padding:6px 22px 6px 8px; border-radius:6px; font-size:0.79rem; font-family:inherit;
+    outline:none; cursor:pointer; appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23718096'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 6px center; background-size:9px;
+  }
+  select:focus { border-color:var(--accent); background-color:white; }
+
+  .macro-input-container {
+    display:none; width:100%; flex-direction:column;
+  }
+  .macro-input-container.visible { display:flex; }
+  
+  .macro-input {
+    width:100%; padding:6px 8px; border:1px solid var(--border);
+    border-radius:6px; font-size:0.79rem; font-family:inherit; outline:none;
+    background:var(--bg); color:var(--text);
+  }
+  .macro-input:focus { border-color:var(--accent); background:white; }
+
+  .save-bar {
+    position:fixed; bottom:0; left:0; right:0;
+    background:var(--white); border-top:1px solid var(--border);
+    padding:12px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px;
+    z-index:10; transform:translateY(100%); transition:transform 0.3s ease;
+  }
+  .save-bar.visible { transform:translateY(0); }
+  .save-bar p { font-size:0.85rem; color:var(--text-sub); }
+  .btn-reset { font-size:0.82rem; color:#dc2626; background:transparent;
+               border:1px solid #fca5a5; padding:8px 14px; border-radius:6px;
+               font-family:inherit; cursor:pointer; }
+  .btn-reset:hover { background:#fef2f2; }
+  .btn-save {
+    display:flex; align-items:center; gap:8px; background:var(--success);
+    color:white; border:none; padding:10px 22px; border-radius:8px;
+    font-size:0.9rem; font-weight:600; font-family:inherit; cursor:pointer;
+    transition:all 0.2s; white-space:nowrap;
+  }
+  .btn-save:hover { background:#047857; }
+  .btn-save:disabled { opacity:0.5; cursor:not-allowed; }
+
+  .toast {
+    position:fixed; top:80px; left:50%; transform:translateX(-50%) translateY(-10px);
+    background:var(--text); color:white; padding:10px 20px; border-radius:8px;
+    font-size:0.85rem; font-weight:500; opacity:0; transition:all 0.3s;
+    pointer-events:none; z-index:100; white-space:nowrap;
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.success { background:var(--success); }
+  .toast.error   { background:#dc2626; }
+  .toast.info    { background:#0284c7; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">⌨</div>
+    <div><h1>鍵盤設定</h1><p>RP2040 通用版 · 純USB</p></div>
+  </div>
+  <div class="status-pill" id="statusPill" onclick="toggleConnect()">
+    <div class="dot"></div>
+    <span id="statusText">USB 連線</span>
+  </div>
+</div>
+
+<div class="main">
+  <div id="connectScreen">
+    <div class="connect-icon">🔌</div>
+    <h2>連線到鍵盤</h2>
+    <p>透過 USB 連線到 RP2040 鍵盤<br><small style="color:var(--warn)">（請先在實體鍵盤輸入手勢解鎖，再進行讀取）</small></p>
+    <button class="btn-primary" onclick="toggleConnect()">
+      🔌 USB 連線
+    </button>
+    <div class="note" id="connectNote">⚠ 請使用 Chrome 或 Edge 瀏覽器</div>
+  </div>
+
+  <div id="editor">
+    <div class="pin-card">
+      <div class="pin-header">🔐 設定／取消解鎖手勢 PIN 碼（只寫不讀）</div>
+      <div class="pin-desc" id="pinDescText">請輸入數字，並用半形逗號隔開。留空或點選「取消密碼」即可關閉開機鎖定。</div>
+      <div class="pin-input-group">
+        <input type="text" id="pinInput" class="pin-input" placeholder="例如: 1,3,2 (留空代表取消密碼)">
+        <button class="btn-io" onclick="savePin()" style="border-color:var(--accent); color:var(--accent);">💾 更新 PIN 碼</button>
+        <button class="btn-io" onclick="clearPin()" style="border-color:#dc2626; color:#dc2626;">🔓 取消密碼</button>
+      </div>
+    </div>
+
+    <div class="io-bar">
+      <span class="io-bar-label">設定檔：</span>
+      <button class="btn-io" onclick="exportConfig()">⬇ 匯出 JSON</button>
+      <button class="btn-io import" onclick="document.getElementById('importFileInput').click()">⬆ 匯入 JSON</button>
+      <input type="file" id="importFileInput" accept=".json" onchange="importConfig(event)">
+    </div>
+
+    <details class="macro-guide">
+  <summary>📖 Macro 語法與特殊指令完整對照表</summary>
+  <table>
+    <thead>
+      <tr>
+        <th>類別</th>
+        <th>輸入語法</th>
+        <th>代表功能</th>
+        <th>說明 / 範例</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- 基礎轉義字元 -->
+      <tr>
+        <td rowspan="3"><b>基礎字元</b></td>
+        <td><code>\t</code></td>
+        <td>Tab 鍵 (跳格)</td>
+        <td><code>user\tpass</code> (輸入帳號 → 按 Tab → 輸入密碼)</td>
+      </tr>
+      <tr>
+        <td><code>\n</code></td>
+        <td>Enter 鍵 (換行/送出)</td>
+        <td><code>hello\n</code> (輸入文字後自動送出)</td>
+      </tr>
+      <tr>
+        <td><code>\\</code></td>
+        <td>反斜線 <code>\</code></td>
+        <td>輸出單個反斜線字元</td>
+      </tr>
+      <!-- 編輯與控制鍵 -->
+      <tr>
+        <td rowspan="5"><b>控制按鍵</b></td>
+        <td><code>[BSPC]</code></td>
+        <td>Backspace 刪除鍵</td>
+        <td>修正前一個輸入字元</td>
+      </tr>
+      <tr>
+        <td><code>[DEL]</code></td>
+        <td>Delete 鍵</td>
+        <td>刪除後一個字元</td>
+      </tr>
+      <tr>
+        <td><code>[ESC]</code></td>
+        <td>Escape 鍵</td>
+        <td>取消或離開目前狀態</td>
+      </tr>
+      <tr>
+        <td><code>[SPACE]</code></td>
+        <td>Space 空格鍵</td>
+        <td>輸入空格</td>
+      </tr>
+      <tr>
+        <td><code>[ENTER]</code></td>
+        <td>Enter 鍵</td>
+        <td>效果與 <code>\n</code> 相同，便於閱讀區分</td>
+      </tr>
+      <!-- 組合鍵 -->
+      <tr>
+        <td><b>組合鍵</b></td>
+        <td><code>[STAB]</code></td>
+        <td>Shift + Tab (反向跳格)</td>
+        <td>常用於表單快速回到上一欄輸入框</td>
+      </tr>
+      <!-- 功能鍵 -->
+      <tr>
+        <td><b>功能鍵</b></td>
+        <td><code>[F1]</code> ~ <code>[F12]</code></td>
+        <td>F1 至 F12 鍵</td>
+        <td>例如：<code>[F5]</code> (重新整理網頁)</td>
+      </tr>
+      <!-- 多媒體 -->
+      <tr>
+        <td rowspan="3"><b>多媒體</b></td>
+        <td><code>[VUP]</code></td>
+        <td>音量增加</td>
+        <td>調高系統音量</td>
+      </tr>
+      <tr>
+        <td><code>[VDN]</code></td>
+        <td>音量減少</td>
+        <td>調低系統音量</td>
+      </tr>
+      <tr>
+        <td><code>[MUTE]</code></td>
+        <td>一鍵靜音</td>
+        <td>切換靜音狀態</td>
+      </tr>
+      <!-- 延遲控制 -->
+      <tr>
+        <td><b>時間控制</b></td>
+        <td><code>[WAIT:ms]</code></td>
+        <td>延遲等待 (毫秒)</td>
+        <td><code>cmd[WAIT:500]\n</code> (輸入 cmd 等待 0.5 秒再按下 Enter)</td>
+      </tr>
+    </tbody>
+  </table>
+</details>
+
+    <div class="layer-tabs">
+      <div class="layer-tab active" data-layer="0" onclick="switchLayer(0)">Layer 0（基本層）</div>
+      <div class="layer-tab" data-layer="1" onclick="switchLayer(1)">Layer 1</div>
+      <div class="layer-tab" data-layer="2" onclick="switchLayer(2)">Layer 2</div>
+      <div class="layer-tab" data-layer="3" onclick="switchLayer(3)">Layer 3</div>
+    </div>
+
+    <div class="section-header">
+      <div class="section-label">按鍵配置</div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label style="font-size:0.75rem; color:var(--text-sub);">網頁顯示欄數：</label>
+        <select id="colSelect" onchange="changeGridColumns(this.value)" style="width:auto; padding:2px 8px;">
+          <option value="auto">自動適應</option>
+          <option value="2">2 欄</option>
+          <option value="3" selected>3 欄 (預設)</option>
+          <option value="4">4 欄</option>
+          <option value="6">6 欄</option>
+        </select>
+        <button class="btn-sm" onclick="readConfig()">🔄 重新讀取</button>
+      </div>
+    </div>
+
+    <div class="key-grid" id="keyGrid"></div>
+  </div>
+</div>
+
+<div class="save-bar" id="saveBar">
+  <button class="btn-reset" onclick="confirmReset()">↺ 恢復預設</button>
+  <p>有未儲存的變更</p>
+  <button class="btn-save" id="btnSave" onclick="saveConfig()">💾 寫入鍵盤</button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const KEY_OPTIONS = [
+  { group:'英文字母', items: Array.from({length:26},(_,i)=>({
+      label: String.fromCharCode(65+i),
+      value: String.fromCharCode(97+i).charCodeAt(0).toString()
+  }))},
+  { group:'數字', items: Array.from({length:10},(_,i)=>({
+      label:`${i}`, value:`${i}`.charCodeAt(0).toString()
+  }))},
+  { group:'功能鍵', items:[
+    {label:'Enter',     value:'10'},
+    {label:'Space',     value:'32'},
+    {label:'Tab',       value:'9'},
+    {label:'Backspace', value:'8'},
+    {label:'Escape',    value:'M:K:ESC'},
+  ]},
+  { group:'符號', items: Array.from('!@#$%^&*()-=[]/.', c=>({
+      label:c, value:c.charCodeAt(0).toString()
+  }))},
+  { group:'F 鍵', items: Array.from({length:12},(_,i)=>({
+      label:`F${i+1}`, value:`M:K:F${i+1}`
+  }))},
+  { group:'方向鍵', items:[
+    {label:'↑ 上',  value:'M:K:UP'},   {label:'↓ 下',  value:'M:K:DOWN'},
+    {label:'← 左',  value:'M:K:LEFT'}, {label:'→ 右',  value:'M:K:RIGHT'},
+  ]},
+  { group:'導航鍵', items:[
+    {label:'Delete',      value:'M:K:DEL'},  {label:'Insert',  value:'M:K:INS'},
+    {label:'Home',        value:'M:K:HOME'}, {label:'End',     value:'M:K:END'},
+    {label:'Page Up',     value:'M:K:PGUP'},{label:'Page Down',value:'M:K:PGDN'},
+    {label:'Print Screen',value:'M:K:PRTSC'},
+  ]},
+  { group:'修飾鍵', items:[
+    {label:'Ctrl (左)',      value:'M:K:LCTRL'},
+    {label:'Ctrl (右)',      value:'M:K:RCTRL'},
+    {label:'Shift (左)',     value:'M:K:LSHIFT'},
+    {label:'Shift (右)',     value:'M:K:RSHIFT'},
+    {label:'Alt (左)',       value:'M:K:LALT'},
+    {label:'AltGr (右Alt)', value:'M:K:RALT'},
+    {label:'Win/Cmd (左)',   value:'M:K:LGUI'},
+    {label:'Win/Cmd (右)',   value:'M:K:RGUI'},
+  ]},
+  { group:'兩鍵組合', items:[
+    {label:'Ctrl+C 複製',    value:'M:C:CTRL+C'},
+    {label:'Ctrl+V 貼上',    value:'M:C:CTRL+V'},
+    {label:'Ctrl+X 剪下',    value:'M:C:CTRL+X'},
+    {label:'Ctrl+Z 復原',    value:'M:C:CTRL+Z'},
+    {label:'Ctrl+Y 取消復原',value:'M:C:CTRL+Y'},
+    {label:'Ctrl+S 儲存',    value:'M:C:CTRL+S'},
+    {label:'Ctrl+A 全選',    value:'M:C:CTRL+A'},
+    {label:'Ctrl+F 搜尋',    value:'M:C:CTRL+F'},
+    {label:'Ctrl+W 關閉分頁',value:'M:C:CTRL+W'},
+    {label:'Ctrl+T 新分頁',  value:'M:C:CTRL+T'},
+    {label:'Alt+F4 關閉',    value:'M:C:ALT+F4'},
+    {label:'Alt+Tab 切換',   value:'M:C:ALT+TAB'},
+    {label:'Win+D 桌面',     value:'M:C:GUI+D'},
+    {label:'Win+L 鎖定',     value:'M:C:GUI+L'},
+    {label:'Win+E 檔案總管', value:'M:C:GUI+E'},
+  ]},
+  { group:'三鍵組合', items:[
+    {label:'Ctrl+Shift+ESC 工作管理員', value:'M:C3:CTRL+SHIFT+ESC'},
+    {label:'Ctrl+Alt+DEL',              value:'M:C3:CTRL+ALT+DEL'},
+    {label:'Ctrl+Shift+T 還原分頁',     value:'M:C3:CTRL+SHIFT+T'},
+    {label:'Ctrl+Shift+N 無痕視窗',     value:'M:C3:CTRL+SHIFT+N'},
+    {label:'Ctrl+Shift+I 開發工具',     value:'M:C3:CTRL+SHIFT+I'},
+    {label:'Win+Shift+S 截圖',          value:'M:C3:GUI+SHIFT+S'},
+    {label:'Alt+Shift+Tab 反向切換',    value:'M:C3:ALT+SHIFT+TAB'},
+  ]},
+  { group:'媒體控制', items:[
+    {label:'⏯ 播放／暫停', value:'M:PLAY'}, {label:'⏹ 停止',   value:'M:STOP'},
+    {label:'⏭ 下一首',     value:'M:NEXT'}, {label:'⏮ 上一首', value:'M:PREV'},
+    {label:'🔊 音量增加',   value:'M:VUP'},  {label:'🔉 音量減少',value:'M:VDN'},
+    {label:'🔇 靜音',       value:'M:MUTE'},
+  ]},
+  { group:'Layer 切換（長按）', items:[
+    {label:'長按 → Layer 1', value:'L:1'},
+    {label:'長按 → Layer 2', value:'L:2'},
+    {label:'長按 → Layer 3', value:'L:3'},
+  ]},
+  { group:'Macro 字串', items:[
+    {label:'📝 自訂字串...', value:'T:'},
+  ]},
+  { group:'(無動作)', items:[
+    {label:'— 無動作 —', value:''},
+  ]},
+];
+
+const NUM_LAYERS = 4;
+let NUM_KEYS     = 0;
+let GPIO_PINS    = [];
+let keyData      = [];
+let currentLayer = 0;
+
+let usbPort=null, usbWriter=null, usbReader=null;
+let usbRxBuf='', usbRxResolve=null, usbRxReject=null;
+
+function escapeMacro(str) {
+  return str.replace(/,/g, '\\c')
+            .replace(/\^/g, '\\p')
+            .replace(/\|/g, '\\v')
+            .replace(/;/g, '\\s');
+}
+
+async function toggleConnect() {
+  if (usbPort) { await disconnectUsb(); return; }
+  try {
+    usbPort = await navigator.serial.requestPort();
+    try { await usbPort.close(); } catch(_) {}
+    await usbPort.open({ baudRate: 115200 });
+    usbWriter = usbPort.writable.getWriter();
+    setConnected(true);
+    readUsbLoop();
+    await delay(1500);
+    await readConfig();
+  } catch(e) {
+    usbPort=null;
+    showToast('USB 連線失敗：' + e.message, 'error');
+  }
+}
+
+async function disconnectUsb() {
+  const reader = usbReader;
+  const writer = usbWriter;
+  const port   = usbPort;
+  usbReader = null; usbWriter = null; usbPort = null;
+
+  try { await reader?.cancel(); } catch(_) {}
+  try { writer?.releaseLock(); } catch(_) {}
+  await delay(100);
+  try { await port?.close(); } catch(_) {}
+
+  setConnected(false);
+  showToast('USB 已斷線', 'error');
+}
+
+async function readUsbLoop() {
+  try {
+    while (usbPort?.readable) {
+      usbReader = usbPort.readable.getReader();
+      try {
+        while (true) {
+          const { value, done } = await usbReader.read();
+          if (done) break;
+          usbRxBuf += new TextDecoder().decode(value);
+          let nl;
+          while ((nl = usbRxBuf.indexOf('\n')) !== -1) {
+            const line = usbRxBuf.slice(0, nl).replace(/\r/g, '').trim();
+            usbRxBuf = usbRxBuf.slice(nl + 1);
+            if (line.length > 0 && usbRxResolve) {
+              const r=usbRxResolve; usbRxResolve=usbRxReject=null; r(line);
+            }
+          }
+        }
+      } catch(_) {
+      } finally {
+        try { usbReader.releaseLock(); } catch(_) {}
+        usbReader = null;
+      }
+    }
+  } catch(_) {}
+}
+
+function waitResponse(timeout=5000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      usbRxResolve=usbRxReject=null;
+      reject('timeout');
+    }, timeout);
+    const wrap = (r) => { clearTimeout(timer); resolve(r); };
+    usbRxResolve=wrap; usbRxReject=reject;
+  });
+}
+
+async function sendLine(line) {
+  usbRxBuf = '';
+  const data = new TextEncoder().encode(line + '\n');
+  await usbWriter.write(data);
+}
+
+function serialize(data) {
+  let layers = [];
+  for (let l=0; l<NUM_LAYERS; l++) {
+    let keys = [];
+    for (let i=0; i<NUM_KEYS; i++) {
+      let tap = data[l][i].tap;
+      let hold = data[l][i].hold;
+      if (tap.startsWith('T:'))  tap  = 'T:' + escapeMacro(tap.substring(2));
+      if (hold.startsWith('T:')) hold = 'T:' + escapeMacro(hold.substring(2));
+      keys.push(`${tap}^${hold}`);
+    }
+    layers.push(keys.join(','));
+  }
+  return layers.join('|') + ';NOENC;NOENC';
+}
+
+function deserialize(str) {
+  const s2 = str.lastIndexOf(';');
+  const s1 = s2 > 0 ? str.lastIndexOf(';', s2 - 1) : -1;
+  if (s1 < 0 || s1 === s2) return null;
+
+  const layersPart = str.substring(0, s1);
+  const layerStrs  = layersPart.split('|');
+  const data = Array.from({length:NUM_LAYERS}, ()=>
+    Array.from({length:NUM_KEYS}, ()=>({tap:'',hold:''}))
+  );
+
+  for (let l=0; l<NUM_LAYERS; l++) {
+    const tokens = (layerStrs[l]||'').split(',');
+    for (let i=0; i<NUM_KEYS; i++) {
+      const tok = tokens[i]||'';
+      const caret = tok.indexOf('^');
+      data[l][i].tap  = caret===-1 ? tok  : tok.substring(0,caret);
+      data[l][i].hold = caret===-1 ? ''   : tok.substring(caret+1);
+    }
+  }
+  return data;
+}
+
+async function readConfig() {
+  showToast('讀取硬體資訊中...', 'info');
+  try {
+    await sendLine('GET_HW');
+    const hwResp = await waitResponse(4000);
+
+    if (hwResp === 'ERR:LOCKED') {
+      showToast('❌ 讀取失敗：實體鍵盤未解鎖！請先輸入手勢。', 'error');
+      return;
+    }
+
+    if (hwResp.startsWith('HW:')) {
+      let parts = hwResp.substring(3).split(';');
+      parts.forEach(p => {
+        if (p.startsWith('KEYS=')) NUM_KEYS = parseInt(p.substring(5));
+        if (p.startsWith('PINS=')) GPIO_PINS = p.substring(5).split(',').map(Number);
+      });
+
+      const subTitle = document.querySelector('.header p');
+      if (subTitle) subTitle.textContent = `RP2040 ${NUM_KEYS}Key 通用版 · 純USB`;
+      const pinDesc = document.getElementById('pinDescText');
+      if (pinDesc) pinDesc.textContent = `請輸入數字 (1~${NUM_KEYS})，用半形逗號隔開。留空或點選「取消密碼」即可關閉開機鎖定。`;
+
+    } else {
+      throw new Error('無法取得硬體架構');
+    }
+
+    showToast('讀取按鍵設定中...', 'info');
+    await sendLine('GET2');
+    const resp = await waitResponse(6000);
+
+    if (resp.startsWith('CFG2:')) {
+      const parsed = deserialize(resp.substring(5));
+      if (parsed) {
+        keyData = parsed;
+        buildKeyGrid();
+        showToast(`✅ 已載入 ${NUM_KEYS} 鍵配置`, 'success');
+        return;
+      }
+    }
+
+    showToast('讀取格式異常，顯示預設值', 'error');
+  } catch(e) {
+    console.error(e);
+    showToast('讀取逾時（請確認是否已在鍵盤輸入手勢解鎖）', 'error');
+  }
+
+  resetToDefaults();
+  buildKeyGrid();
+}
+
+async function saveConfig() {
+  if (!usbPort) return;
+  document.getElementById('btnSave').disabled=true;
+  showToast('寫入中...','info');
+
+  collectFromUI(currentLayer);
+
+  const payload = 'CFG2:' + serialize(keyData);
+  try {
+    await sendLine(payload);
+    const resp = await waitResponse(6000);
+    if (resp==='OK') {
+      document.getElementById('saveBar').classList.remove('visible');
+      document.querySelectorAll('.key-card.changed').forEach(c=>c.classList.remove('changed'));
+      showToast('✅ 設定已儲存到鍵盤！','success');
+    } else if (resp==='ERR:LOCKED') {
+      showToast('❌ 寫入失敗：實體鍵盤尚未解鎖！','error');
+    } else {
+      showToast(`寫入失敗：${resp}`,'error');
+    }
+  } catch(e) {
+    showToast('寫入逾時，請重試', 'error');
+  }
+  document.getElementById('btnSave').disabled=false;
+}
+
+async function savePin() {
+  if (!usbPort) {
+    showToast('請先連線到鍵盤', 'error');
+    return;
+  }
+  const pinVal = document.getElementById('pinInput').value.trim();
+  
+  if (pinVal !== '' && pinVal !== 'NONE') {
+    const pinArray = pinVal.split(',').map(x => x.trim()).filter(x => x !== '');
+    if (pinArray.length === 0) {
+      showToast('❌ PIN 碼不能為空字串', 'error');
+      return;
+    }
+    for (let numStr of pinArray) {
+      let n = parseInt(numStr, 10);
+      if (isNaN(n) || n < 1 || n > NUM_KEYS) {
+        showToast(`❌ PIN 碼數字必須落在 1 到 ${NUM_KEYS} 之間！`, 'error');
+        return;
+      }
+    }
+  }
+
+  const sendVal = (pinVal === '') ? 'NONE' : pinVal;
+
+  showToast('正在更新解鎖 PIN 碼...', 'info');
+  try {
+    await sendLine('SETPIN:' + sendVal);
+    const resp = await waitResponse(6000);
+    if (resp === 'OK:PIN_UPDATED') {
+      if (sendVal === 'NONE') {
+        showToast('🔓 密碼已成功取消！', 'success');
+      } else {
+        showToast('🔐 解鎖手勢 PIN 碼已更新成功！', 'success');
+      }
+      document.getElementById('pinInput').value = '';
+    } else if (resp === 'ERR:PIN_INVALID') {
+      showToast(`❌ 更新失敗：PIN 碼必須介於 1~${NUM_KEYS}！`, 'error');
+    } else if (resp === 'ERR:LOCKED') {
+      showToast('❌ 更新失敗：實體鍵盤尚未解鎖！', 'error');
+    } else {
+      showToast(`更新失敗：${resp}`, 'error');
+    }
+  } catch(e) {
+    showToast('更新逾時，請重試', 'error');
+  }
+}
+
+function clearPin() {
+  document.getElementById('pinInput').value = 'NONE';
+  savePin();
+}
+
+function changeGridColumns(cols) {
+  const grid = document.getElementById('keyGrid');
+  if (cols === 'auto') {
+    grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+  } else {
+    grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  }
+}
+
+function switchLayer(l) {
+  collectFromUI(currentLayer);
+  currentLayer = l;
+  document.querySelectorAll('.layer-tab').forEach(t => {
+    t.classList.toggle('active', parseInt(t.dataset.layer)===l);
+  });
+  buildKeyGrid();
+}
+
+function collectFromUI(layer = currentLayer) {
+  for (let i=0; i<NUM_KEYS; i++) {
+    const tapSel    = document.getElementById(`tap${i}`);
+    const holdSel   = document.getElementById(`hold${i}`);
+    const tapMacro  = document.getElementById(`tapMacro${i}`);
+    const holdMacro = document.getElementById(`holdMacro${i}`);
+    if (!tapSel) continue;
+    let tapVal  = tapSel.value;
+    let holdVal = holdSel ? holdSel.value : '';
+    if (tapVal  === 'T:' && tapMacro)  tapVal  = 'T:' + tapMacro.value;
+    if (holdVal === 'T:' && holdMacro) holdVal = 'T:' + holdMacro.value;
+    keyData[layer][i].tap  = tapVal;
+    keyData[layer][i].hold = holdVal;
+  }
+}
+
+function buildKeyGrid() {
+  const grid = document.getElementById('keyGrid');
+  grid.innerHTML = '';
+
+  for (let i=0; i<NUM_KEYS; i++) {
+    const { tap, hold } = keyData[currentLayer][i];
+
+    const card = document.createElement('div');
+    card.className = 'key-card';
+
+    const badge = document.createElement('div');
+    badge.className = 'key-badge';
+    badge.innerHTML = `K${i+1}<span class="gpio-tag">GP${GPIO_PINS[i]}</span>`;
+    card.appendChild(badge);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'tap-hold-wrap';
+
+    const tapRow = buildTHRow('tap', i, tap, 'Tap');
+    wrap.appendChild(tapRow);
+    if (tapRow._macroContainer) wrap.appendChild(tapRow._macroContainer);
+
+    const holdRow = buildTHRow('hold', i, hold, 'Hold');
+    wrap.appendChild(holdRow);
+    if (holdRow._macroContainer) wrap.appendChild(holdRow._macroContainer);
+
+    card.appendChild(wrap);
+    grid.appendChild(card);
+  }
+}
+
+function insertMacroToInput(inputId, text) {
+  const inputEl = document.getElementById(inputId);
+  if (!inputEl) return;
+  const start = inputEl.selectionStart || inputEl.value.length;
+  const end = inputEl.selectionEnd || inputEl.value.length;
+  const val = inputEl.value;
+  inputEl.value = val.substring(0, start) + text + val.substring(end);
+  inputEl.selectionStart = inputEl.selectionEnd = start + text.length;
+  inputEl.focus();
+
+  const card = inputEl.closest('.key-card');
+  if (card) card.classList.add('changed');
+  markChanged();
+}
+
+function buildTHRow(type, idx, value, labelText) {
+  const row = document.createElement('div');
+  row.className = 'tap-hold-row';
+
+  const lbl = document.createElement('span');
+  lbl.className = 'th-label' + (type==='hold'?' hold':'');
+  lbl.textContent = labelText;
+  row.appendChild(lbl);
+
+  const selId   = `${type}${idx}`;
+  const macroId = `${type}Macro${idx}`;
+
+  const isMacro   = value.startsWith('T:');
+  const macroText = isMacro ? value.substring(2) : '';
+  const selValue  = isMacro ? 'T:' : value;
+
+  const sel = document.createElement('select');
+  sel.id = selId;
+  KEY_OPTIONS.forEach(group=>{
+    const og = document.createElement('optgroup');
+    og.label = group.group;
+    group.items.forEach(item=>{
+      const opt = document.createElement('option');
+      opt.value = item.value;
+      opt.textContent = item.label;
+      if (item.value === selValue) opt.selected = true;
+      og.appendChild(opt);
+    });
+    sel.appendChild(og);
+  });
+
+  const macroContainer = document.createElement('div');
+  macroContainer.className = 'macro-input-container' + (isMacro ? ' visible' : '');
+
+  const macroInput = document.createElement('input');
+  macroInput.type = 'text';
+  macroInput.id = macroId;
+  macroInput.className = 'macro-input';
+  macroInput.placeholder = '輸入字串 (支援 \\t, \\n)...';
+  macroInput.value = macroText;
+  macroInput.maxLength = 45;
+  macroInput.oninput = () => {
+    const card = macroInput.closest('.key-card');
+    if (card) card.classList.add('changed');
+    markChanged();
+  };
+
+  const quickTags = document.createElement('div');
+  quickTags.className = 'macro-quick-tags';
+  
+  const tags = [
+    { label: '⏳ 延遲', val: '[WAIT:500]' },
+    { label: '⇥ Tab', val: '\\t' },
+    { label: '⇤ STab', val: '[STAB]' },
+    { label: '↵ Enter', val: '\\n' },
+    { label: '⌫ BSPC', val: '[BSPC]' },
+    { label: '⎋ ESC', val: '[ESC]' },
+    { label: '🔊 音量+', val: '[VUP]' },
+    { label: '🔉 音量-', val: '[VDN]' },
+    { label: '🔇 靜音', val: '[MUTE]' }
+  ];
+
+  tags.forEach(t => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'macro-tag-btn';
+    btn.textContent = t.label;
+    btn.onclick = (e) => {
+      e.preventDefault();
+      insertMacroToInput(macroId, t.val);
+    };
+    quickTags.appendChild(btn);
+  });
+
+  macroContainer.appendChild(macroInput);
+  macroContainer.appendChild(quickTags);
+
+  sel.onchange = () => {
+    macroContainer.classList.toggle('visible', sel.value === 'T:');
+    const card = sel.closest('.key-card');
+    if (card) card.classList.add('changed');
+    markChanged();
+  };
+
+  row.appendChild(sel);
+  row._macroContainer = macroContainer;
+  return row;
+}
+
+function resetToDefaults() {
+  if (NUM_KEYS === 0) return;
+  keyData = Array.from({length:NUM_LAYERS}, (_, l) =>
+    Array.from({length:NUM_KEYS}, (_, i) => ({
+      tap:  l === 0 ? (97 + i).toString() : '', 
+      hold: (l === 0 && i < 3) ? `L:${i+1}` : '',
+    }))
+  );
+}
+
+function confirmReset() {
+  if (!confirm('確定要恢復所有按鍵為預設值嗎？')) return;
+  resetToDefaults();
+  buildKeyGrid();
+  markChanged();
+  showToast('已恢復預設值（請記得寫入鍵盤）','info');
+}
+
+function exportConfig() {
+  collectFromUI();
+
+  const layers = keyData.map((layer, l) =>
+    layer.map((k, i) => {
+      const tapLabel  = valToLabel(k.tap);
+      const holdLabel = valToLabel(k.hold);
+      return { key:`K${i+1}`, gpio:`GP${GPIO_PINS[i]}`,
+               tap:k.tap, tap_label:tapLabel,
+               hold:k.hold, hold_label:holdLabel };
+    })
+  );
+
+  const payload = {
+    _note: 'RP2040 鍵盤設定檔',
+    _version: 3,
+    _keys: NUM_KEYS,
+    layers,
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href=url; a.download=`rp2040_key_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('✅ 設定已匯出','success');
+}
+
+function importConfig(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value='';
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+
+      if (data._version !== 3)
+        throw new Error(`不支援的版本：_version=${data._version}`);
+      if (!Array.isArray(data.layers) || data.layers.length !== NUM_LAYERS)
+        throw new Error('layers 欄位格式不正確');
+
+      for (let l=0; l<NUM_LAYERS; l++) {
+        if (!Array.isArray(data.layers[l]) || data.layers[l].length !== NUM_KEYS)
+          throw new Error(`Layer ${l} 按鍵數量不正確（需 ${NUM_KEYS} 個）`);
+        for (let i=0; i<NUM_KEYS; i++) {
+          const k = data.layers[l][i];
+          keyData[l][i].tap  = String(k.tap  || '');
+          keyData[l][i].hold = String(k.hold || '');
+        }
+      }
+
+      buildKeyGrid();
+      markChanged();
+      showToast('✅ 設定已匯入，請確認後寫入鍵盤','success');
+    } catch(err) {
+      showToast(`❌ 匯入失敗：${err.message}`,'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function valToLabel(v) {
+  if (!v) return '—';
+  if (v.startsWith('T:')) return `📝 "${v.substring(2)}"`;
+  for (const g of KEY_OPTIONS) {
+    const found = g.items.find(it=>it.value===v);
+    if (found) return found.label;
+  }
+  return v;
+}
+
+function markChanged() {
+  document.getElementById('saveBar').classList.add('visible');
+}
+
+function setConnected(connected) {
+  const pill = document.getElementById('statusPill');
+  pill.className = 'status-pill' + (connected?' connected':'');
+  document.getElementById('statusText').textContent =
+    connected ? 'USB 已連線・斷線' : 'USB 連線';
+
+  document.getElementById('editor').style.display        = connected?'block':'none';
+  document.getElementById('connectScreen').style.display = connected?'none':'block';
+  if (!connected) document.getElementById('saveBar').classList.remove('visible');
+}
+
+let toastTimer;
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.className=`toast ${type} show`;
+  clearTimeout(toastTimer);
+  if (type!=='info') toastTimer=setTimeout(()=>{ t.className='toast'; }, 2800);
+}
+
+const delay = ms => new Promise(r=>setTimeout(r,ms));
+
+resetToDefaults();
+buildKeyGrid();
+
+if (!navigator.serial)
+  document.getElementById('connectNote').textContent =
+    '⚠ 此瀏覽器不支援 Web Serial，請改用 Chrome 或 Edge';
+else
+  document.getElementById('connectNote').textContent =
+    '⚠ 請使用 Chrome 或 Edge 瀏覽器，並在 USB 連線後點擊上方按鈕';
+</script>
+</body>
+</html>

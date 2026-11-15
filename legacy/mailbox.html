@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>信箱巡邏控制台 v2.2.7</title>
+<style>
+  :root { --primary:#2196F3; --success:#4caf50; --danger:#f44336; --bg:#f4f7f6; --dark:#1a1a1a; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); padding:15px; max-width:500px; margin:auto; color:#333; }
+  .card { background:white; padding:18px; border-radius:15px; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-bottom:15px; }
+
+  .mail-info { padding:15px; border-radius:12px; border-left:6px solid #ccc; transition:.3s; }
+  .mail-info.is-mail    { background:#ffebee; border-left-color:var(--danger); }
+  .mail-info.no-mail    { background:#e8f5e9; border-left-color:var(--success); }
+  .mail-info.sensor-err { background:#fff8e1; border-left-color:#ff9800; }
+  .status-text { font-size:24px; font-weight:900; display:block; margin-bottom:8px; }
+
+  .time-monitor { margin-top:12px; padding-top:10px; border-top:1px dashed #ddd; }
+  .volt-status { display:inline-block; font-size:12px; font-weight:bold; padding:2px 8px; border-radius:4px; margin-left:6px; }
+  .volt-ok   { background:#e8f5e9; color:#2e7d32; }
+  .volt-low  { background:#fff3e0; color:#e65100; }
+  .volt-crit { background:#ffebee; color:#c62828; }
+  .lifepo4-note { font-size:11px; color:#888; margin-top:10px; padding:8px 10px; background:#f9f9f9; border-radius:8px; border-left:3px solid #ddd; line-height:1.6; }
+  .time-abs { font-size:12px; color:#777; margin-bottom:2px; }
+
+  #log-container { background:var(--dark); color:#adff2f; padding:12px; border-radius:10px; font-family:'Consolas',monospace; font-size:11px; height:180px; overflow-y:auto; margin:10px 0; border:1px solid #333; }
+  .log-line { border-bottom:1px solid #2a2a2a; padding:3px 0; line-height:1.4; }
+  .ts { color:#666; margin-right:6px; }
+  .dir-rx  { color:#2196F3; }
+  .dir-tx  { color:#f44336; }
+  .dir-sys { color:#ff9800; }
+
+  .nav-btns { display:flex; gap:8px; margin-bottom:15px; }
+  .nav-btns button { flex:1; padding:12px; border:none; border-radius:10px; cursor:pointer; font-weight:bold; color:white; }
+
+  .btn-calib { background:#607d8b; color:white; border:none; padding:14px; border-radius:10px; cursor:pointer; font-weight:bold; width:100%; margin-top:10px; }
+  .btn-calib:disabled { background:#ccc; opacity:.7; cursor:wait; }
+
+  .btn-ntp { background:none; border:1px solid #2196F3; color:#2196F3; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:12px; margin-top:8px; }
+  .btn-ntp:disabled { opacity:.5; cursor:default; }
+
+  .status-bar { font-size:12px; color:#888; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .conn-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#ccc; margin-right:6px; }
+  .conn-dot.on { background:var(--success); box-shadow:0 0 6px var(--success); }
+
+  /* 歷史面板 */
+  .hist-toolbar { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .tab-btn { padding:6px 14px; border:1px solid #ddd; border-radius:20px; background:white; cursor:pointer; font-size:13px; color:#666; }
+  .tab-btn.active { background:var(--primary); color:white; border-color:var(--primary); }
+  .hist-load-btn { padding:6px 14px; border:1px solid var(--primary); border-radius:20px; background:white; cursor:pointer; font-size:13px; color:var(--primary); margin-left:auto; }
+  .hist-load-btn:disabled { opacity:.5; cursor:default; }
+
+  .hist-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .hist-table th { text-align:left; padding:6px 4px; border-bottom:2px solid #eee; color:#888; font-weight:normal; }
+  .hist-table td { padding:6px 4px; border-bottom:1px solid #f0f0f0; }
+  .hist-table tr.mail-row td { background:#fff5f5; }
+  .hist-badge { display:inline-block; font-size:10px; padding:1px 6px; border-radius:10px; font-weight:bold; }
+  .hist-badge.mail  { background:#ffebee; color:#c62828; }
+  .hist-badge.empty { background:#e8f5e9; color:#2e7d32; }
+  .hist-badge.err   { background:#fff8e1; color:#e65100; }
+  tr.err-row td     { background:#fffdf5; color:#aaa; }
+
+  #hist-container { max-height:320px; overflow-y:auto; }
+  #hist-status { font-size:12px; color:#999; text-align:center; padding:8px; }
+
+  /* 電壓圖表 */
+  #volt-chart { width:100%; height:120px; display:block; }
+  .chart-label { font-size:11px; color:#999; display:flex; justify-content:space-between; margin-top:2px; }
+
+  .pagination { display:flex; gap:6px; align-items:center; justify-content:center; margin-top:10px; font-size:13px; }
+  .page-btn { padding:4px 12px; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer; }
+  .page-btn:disabled { opacity:.4; cursor:default; }
+</style>
+</head>
+<body>
+
+<div class="nav-btns">
+  <button onclick="connectUSB()" style="background:#444;">🔌 USB 連線</button>
+  <button onclick="connectBT()" style="background:var(--primary);">🔹 藍牙連線</button>
+  <button onclick="disconnect()" style="background:var(--danger);">✕ 斷線</button>
+</div>
+<div class="card">
+  <div id="mail-card" class="mail-info">
+    <span id="mail-status-text" class="status-text">等待連線...</span>
+    <div style="font-size:14px; color:#444;">
+      距離：<b id="mail-dist">--</b> mm &nbsp;&nbsp; 電池：<b id="mail-volt">--</b> V<span id="volt-status" class="volt-status"></span>
+    </div>
+    <div class="time-monitor">
+      <div id="state-time" class="time-abs">尚未更新</div>
+      <div id="delay-hint" class="time-abs" style="color:#ff9800; display:none;">⚠️ 資訊最多延遲 1 小時</div>
+      <div id="no-mail-days" class="time-abs" style="display:none;"></div>
+    </div>
+    <div class="lifepo4-note">
+      <b>關於電池電量顯示：</b>本裝置使用 LiFePO4（磷酸鋰鐵）電池，<b>電壓無法線性反映剩餘電量</b>。<br>
+      <span style="color:#2e7d32">● 正常（≥ 3.20V）</span>　
+      <span style="color:#e65100">● 偏低（3.00～3.20V）</span>　
+      <span style="color:#c62828">● 請充電（&lt; 3.00V）</span>
+    </div>
+  </div>
+  <button id="btn-calib" class="btn-calib" onclick="requestCalib()">重新校準基準距離</button>
+  <div style="text-align:right;">
+    <button id="btn-ntp" class="btn-ntp" onclick="requestNtpSync()" disabled>🕐 同步 Hub 時間</button>
+  </div>
+</div>
+
+<!-- 歷史紀錄面板 -->
+<div class="card">
+  <div class="hist-toolbar">
+    <button class="tab-btn" id="tab-mail" onclick="setTab('mail')">📬 有信紀錄</button>
+    <button class="tab-btn active" id="tab-all" onclick="setTab('all')">全部紀錄</button>
+    <button class="hist-load-btn" id="btn-hist" onclick="loadHistory()" disabled>載入歷史</button>
+  </div>
+
+  <canvas id="volt-chart"></canvas>
+  <div class="chart-label"><span>← 較舊</span><span>電壓趨勢（最近 50 筆）</span><span>最新 →</span></div>
+
+  <div id="hist-status" style="display:none"></div>
+  <div id="hist-container">
+    <table class="hist-table">
+      <thead><tr><th>時間</th><th>狀態</th><th>電壓</th><th>距離</th></tr></thead>
+      <tbody id="hist-body"></tbody>
+    </table>
+  </div>
+  <div class="pagination">
+    <button class="page-btn" id="btn-prev" onclick="changePage(-1)" disabled>◀</button>
+    <span id="page-info" style="color:#999">--</span>
+    <button class="page-btn" id="btn-next" onclick="changePage(1)" disabled>▶</button>
+  </div>
+</div>
+
+<div class="card" style="background:#2d2d2d;">
+  <div class="status-bar">
+    <span style="color:#eee;"><span class="conn-dot" id="conn-dot"></span>狀態：<span id="conn-stat">未連線</span></span>
+    <span id="log-count">0/100</span>
+  </div>
+  <div id="log-container"></div>
+  <button onclick="clearLog()" style="background:none; border:1px solid #555; color:#999; font-size:10px; padding:4px 10px; cursor:pointer; border-radius:5px; float:right;">清除日誌</button>
+  <div style="clear:both;"></div>
+</div>
+
+<!-- 推播(ntfy)診斷日誌：跟即時的 log-container 不同，這是存在 Hub flash
+     裡的永久紀錄，就算網頁沒有一直連線在旁邊看，重新連上後一樣查得到。 -->
+<div class="card">
+  <div class="hist-toolbar">
+    <span style="font-weight:bold; color:#333;">📮 推播通知日誌</span>
+    <button class="hist-load-btn" id="btn-ntfylog" onclick="loadNtfyLog()" disabled>載入</button>
+  </div>
+  <div id="ntfylog-status" style="display:none; color:#999; font-size:13px; padding:10px 0;"></div>
+  <div id="ntfylog-container" style="background:var(--dark); border-radius:10px; padding:10px 12px; font-family:'Consolas',monospace; font-size:12px; max-height:200px; overflow-y:auto;"></div>
+</div>
+
+
+<script>
+/* ============================================================
+ * v2.2.3 修正（USB 連線後偶發「當機」問題）
+ *   [J1] 新增 beforeunload/pagehide 監聽：分頁關閉、重新整理、
+ *        切換頁面時自動呼叫 disconnect()，確保序列埠/BLE GATT
+ *        被乾淨關閉，DTR/RTS 回到穩定狀態。之前只有手動按
+ *        「斷線」鈕才會清理，直接關分頁會讓序列埠停在未關閉
+ *        狀態。
+ *   [J2] disconnect() 沿用既有清理流程（cancel reader → release
+ *        writer lock → close port → gatt.disconnect），[J1] 只是
+ *        補上觸發時機，邏輯本身不變。
+ *   [J3] readUSB() 迴圈結束但非使用者手動斷線 → 代表裝置端已經
+ *        斷開（例如 EN 重置造成 USB 重新列舉，讓舊的 SerialPort
+ *        物件失效），之前完全沒有處理，UI 會停在「已連線」不動，
+ *        看起來像當機。現在會清理狀態並提示。另外監聽
+ *        navigator.serial 的 disconnect 事件作為第二層保險。
+ *   [J4] BLE 連線加上 gattserverdisconnected 監聽，處理裝置端
+ *        主動斷線（超出範圍、Hub 重置）時網頁 UI 沒有更新的問題，
+ *        邏輯對稱於 [J3]。
+ *
+ * v2.2.4 修正（藍牙連線後「發送失敗」）
+ *   [K1] connectBT() 連線後會不 await 地連續呼叫 sendCmd("SYNC")
+ *        跟 loadHistory()（內部呼叫 sendCmd('HIST_REQ,0,100')），
+ *        導致兩次 btChar.writeValue() 幾乎同時觸發，違反 BLE
+ *        GATT 寫入不可重疊的限制，丟出 "GATT operation already
+ *        in progress" 被吃成「發送失敗」。現在所有 BLE 寫入都
+ *        串成同一條 chain 強制排隊，並在錯誤訊息附上是哪個指令
+ *        失敗，方便之後除錯。
+ *
+ * v2.2.5（搭配 Hub 韌體 v2.3.1 的 [L1][L2] 修正）
+ *   重開機紀錄格式不變，但數值意義改了：時間欄位若已經是合理的
+ *   Unix time（NTP 同步後才會有）會直接轉成日期時間顯示；若還是
+ *   開機時的 millis() 佔位值，會明講「尚未取得真實時間，無法對
+ *   時間軸」，不再假裝那個小數字有時間軸意義。
+ *
+ * v2.2.6（搭配 Hub 韌體 v2.3.2 的 [N1]）
+ *   [N1] 「收到通知：今天 XX:XX，X 分鐘前」原本是用瀏覽器收到
+ *        MAIL_UPDATE 當下的 Date.now() 推算，透過 SYNC 重播舊狀態時
+ *        會失真（例如量測其實發生在 13:48，但 14:03 才重新連線，
+ *        會誤顯示成「14:03 剛發生」）。現在改用 Hub 隨 MAIL_UPDATE
+ *        一起送出的真實量測時間，沒有這個欄位（Hub 尚未 NTP 同步）
+ *        時才退回舊行為。
+ *   歷史紀錄預設分頁改為「全部紀錄」，不再預設只看「有信紀錄」。
+ *
+ * v2.2.7（搭配 Hub 韌體 v2.3.4）
+ *   移除「重開機紀錄」整個功能（按鈕、RESET_LOG_REQ 指令、
+ *   RESET_LOG/RESET_LOG_END 解析），Hub 端對應函式先前遺失
+ *   導致編譯失敗。
+ *   連線後自動載入歷史紀錄改為抓最近 50 筆（原本 100 筆）。
+ *
+ * v2.3.0 自動連線
+ *   [P1] 開啟網頁時用 navigator.serial.getPorts() /
+ *        navigator.bluetooth.getDevices() 自動連線已授權過的裝置
+ *        （USB 優先，其次藍牙）。第一次仍需按一次連線按鈕授權。
+ *   [P2] USB 重新插上時（serial 'connect' 事件）自動接回。
+ *   [P3] 藍牙意外斷線後以 watchAdvertisements() 等 Hub 重新廣播，
+ *        收到即自動重連，失敗每 3 秒重試。Hub 韌體需在斷線後
+ *        重新開始廣播。手動按「斷線」會取消自動連線。
+ *   connectUSB()/connectBT() 拆成「選裝置」+ openUSB()/openBT()。
+ * ============================================================ */
+const MAX_LOGS   = 100;
+const PAGE_SIZE  = 50;
+const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+const CHAR_UUID    = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+const BLE_MTU = 20;
+
+let port = null, writer = null, usbReader = null;
+let btDevice = null, btChar = null;
+let lastUpdateTimestamp = null;
+let logHistory = [];
+let isManualDisconnect = false;
+let bleRxBuffer = '';
+
+let histAll     = [];
+let histTotal   = 0;
+let histLoading = false;
+let histTab     = 'all';
+let histPage    = 0;
+
+let ntfyLogAll     = [];
+let ntfyLogTotal   = 0;
+let ntfyLogLoading = false;
+
+// ── 日誌 ──────────────────────────────────────────────────────
+function addLog(type, msg) {
+  const ts = new Date().toLocaleTimeString('zh-TW', { hour12:false });
+  logHistory.unshift({ ts, type, msg });
+  if (logHistory.length > MAX_LOGS) logHistory.pop();
+  const c = document.getElementById('log-container');
+  c.innerHTML = logHistory.map(l =>
+    `<div class="log-line"><span class="ts">${l.ts}</span><span class="dir-${l.type.toLowerCase()}">[${l.type}]</span> ${l.msg}</div>`
+  ).join('');
+  document.getElementById('log-count').innerText = `${logHistory.length}/${MAX_LOGS}`;
+}
+function clearLog() { logHistory = []; document.getElementById('log-container').innerHTML = ''; }
+
+// ── 歷史資料 ──────────────────────────────────────────────────
+function loadHistory() {
+  if (histLoading) return;
+  histAll = []; histTotal = 0; histLoading = true;
+  document.getElementById('btn-hist').disabled = true;
+  showHistStatus('載入中...');
+  sendCmd('HIST_REQ,0,50');
+}
+
+function handleHistData(line) {
+  // 格式：HIST_DATA,{pos},{status},{volt},{dist},{timeVal}
+  // timeVal > 0：Unix timestamp；timeVal < 0：無時間的 counter（取絕對值）
+  const p = line.split(',');
+  if (p.length < 6) return;
+  const timeVal = parseInt(p[5]);
+  histAll.push({
+    pos:     parseInt(p[1]),
+    status:  parseInt(p[2]),
+    volt:    parseFloat(p[3]),
+    dist:    parseInt(p[4]),
+    timeVal: timeVal,
+    hasTime: timeVal > 0
+  });
+}
+
+function handleHistEnd(line) {
+  const p = line.split(',');
+  histTotal   = parseInt(p[1]) || 0;
+  histLoading = false;
+  document.getElementById('btn-hist').disabled = false;
+  if (histAll.length === 0) { showHistStatus('尚無歷史紀錄'); return; }
+  hideHistStatus();
+  histPage = 0;
+  renderHist();
+  drawVoltChart();
+  addLog('SYS', `歷史載入完成：${histAll.length} 筆（共 ${histTotal} 筆）`);
+}
+
+// ── 推播(ntfy)診斷日誌 ──────────────────────────────────────────
+// 跟上面 log-container 的即時 BLE 日誌不同，這是存在 Hub flash 裡
+// 的永久紀錄；就算網頁沒有一直連線在旁邊看，重新連上後一樣查得到。
+function loadNtfyLog() {
+  if (ntfyLogLoading) return;
+  ntfyLogAll = []; ntfyLogTotal = 0; ntfyLogLoading = true;
+  document.getElementById('btn-ntfylog').disabled = true;
+  const c = document.getElementById('ntfylog-status');
+  c.style.display = 'block';
+  c.innerText = '載入中...';
+  document.getElementById('ntfylog-container').innerHTML = '';
+  sendCmd('NTFYLOG_REQ,0,20');
+}
+
+function handleNtfyLogData(line) {
+  // 格式：NTFYLOG_DATA,{pos},{type},{code},{attempt},{timeVal}
+  // type: 0=成功 1=WiFi連線失敗 2=HTTP失敗
+  const p = line.split(',');
+  if (p.length < 6) return;
+  const timeVal = parseInt(p[5]);
+  ntfyLogAll.push({
+    pos:     parseInt(p[1]),
+    type:    parseInt(p[2]),
+    code:    parseInt(p[3]),
+    attempt: parseInt(p[4]),
+    timeVal: timeVal,
+    hasTime: timeVal > 0
+  });
+}
+
+function handleNtfyLogEnd(line) {
+  const p = line.split(',');
+  ntfyLogTotal   = parseInt(p[1]) || 0;
+  ntfyLogLoading = false;
+  document.getElementById('btn-ntfylog').disabled = false;
+  const statusEl = document.getElementById('ntfylog-status');
+  if (ntfyLogAll.length === 0) {
+    statusEl.style.display = 'block';
+    statusEl.innerText = '尚無推播紀錄';
+    return;
+  }
+  statusEl.style.display = 'none';
+  renderNtfyLog();
+}
+
+function renderNtfyLog() {
+  const box = document.getElementById('ntfylog-container');
+  box.innerHTML = ntfyLogAll.map(r => {
+    const t = formatHistTime(r);
+    let color, text;
+    if (r.type === 0) {
+      color = '#4caf50'; text = `✅ 成功（第 ${r.attempt} 次嘗試）`;
+    } else if (r.type === 1) {
+      color = '#f44336'; text = `⚠️ WiFi 連不上（第 ${r.attempt} 次嘗試）`;
+    } else {
+      color = '#ff9800'; text = `⚠️ HTTP 回應碼 ${r.code}（第 ${r.attempt} 次嘗試）`;
+    }
+    return `<div class="log-line" style="border-bottom-color:#333;"><span class="ts">${t}</span><span style="color:${color}">${text}</span></div>`;
+  }).join('');
+}
+
+
+
+function filteredHist() {
+  if (histTab === 'mail') return histAll.filter(r => r.status === 1);
+  return histAll;
+}
+
+// 格式化時間欄位：有時間戳顯示 MM/DD HH:MM，無則顯示相對時間
+function formatHistTime(r) {
+  if (r.hasTime) {
+    const d = new Date(r.timeVal * 1000);
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${mo}/${dy} ${hh}:${mm}`;
+  }
+  // 無時間：用 pos 推算相對時間（pos=0 最新）
+  const h = r.pos;
+  if (h === 0) return '最新';
+  if (h < 24)  return `${h} 小時前`;
+  const d = Math.floor(h / 24), rh = h % 24;
+  return rh > 0 ? `${d} 天 ${rh} 小時前` : `${d} 天前`;
+}
+
+function renderHist() {
+  const data  = filteredHist();
+  const total = data.length;
+  const start = histPage * PAGE_SIZE;
+  const page  = data.slice(start, start + PAGE_SIZE);
+
+  const tbody = document.getElementById('hist-body');
+  if (page.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#bbb;padding:16px">${histTab === 'mail' ? '無有信紀錄' : '無紀錄'}</td></tr>`;
+  } else {
+    tbody.innerHTML = page.map(r => {
+      const timeStr = formatHistTime(r);
+      const badge   = r.status === -1
+        ? '<span class="hist-badge err">感測異常</span>'
+        : r.status === 1
+          ? '<span class="hist-badge mail">有信</span>'
+          : '<span class="hist-badge empty">空箱</span>';
+      const voltCls = r.volt < 3.00 ? 'color:#c62828' : r.volt < 3.20 ? 'color:#e65100' : 'color:#2e7d32';
+      const rowCls  = r.status === 1 ? 'mail-row' : r.status === -1 ? 'err-row' : '';
+      const distStr = r.dist < 0 ? '--' : `${r.dist}mm`;
+      return `<tr class="${rowCls}">
+        <td style="color:#888">${timeStr}</td>
+        <td>${badge}</td>
+        <td style="${voltCls}">${r.volt.toFixed(2)}V</td>
+        <td>${distStr}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  document.getElementById('page-info').innerText = `第 ${histPage + 1} / ${totalPages} 頁（共 ${total} 筆）`;
+  document.getElementById('btn-prev').disabled = histPage === 0;
+  document.getElementById('btn-next').disabled = histPage >= totalPages - 1;
+}
+
+function setTab(tab) {
+  histTab = tab; histPage = 0;
+  document.getElementById('tab-mail').classList.toggle('active', tab === 'mail');
+  document.getElementById('tab-all').classList.toggle('active', tab === 'all');
+  if (histAll.length > 0) renderHist();
+}
+
+function changePage(dir) {
+  const data = filteredHist();
+  const totalPages = Math.ceil(data.length / PAGE_SIZE);
+  histPage = Math.max(0, Math.min(histPage + dir, totalPages - 1));
+  renderHist();
+}
+
+function showHistStatus(msg) {
+  const s = document.getElementById('hist-status');
+  s.innerText = msg; s.style.display = 'block';
+}
+function hideHistStatus() {
+  document.getElementById('hist-status').style.display = 'none';
+}
+
+// ── 電壓折線圖 ────────────────────────────────────────────────
+function drawVoltChart() {
+  const canvas = document.getElementById('volt-chart');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 460;
+  const H = 120;
+  canvas.width = W; canvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+
+  const data = [...histAll].slice(0, 50).reverse();
+  if (data.length < 2) {
+    ctx.fillStyle = '#ccc'; ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center'; ctx.fillText('資料不足', W/2, H/2); return;
+  }
+
+  const volts = data.map(r => r.volt);
+  const minV = Math.min(...volts, 2.50);
+  const maxV = Math.max(...volts, 3.60);
+  const pad = { t:10, b:20, l:32, r:8 };
+  const cW = W - pad.l - pad.r;
+  const cH = H - pad.t - pad.b;
+  const xOf = i => pad.l + (i / (data.length - 1)) * cW;
+  const yOf = v => pad.t + (1 - (v - minV) / (maxV - minV)) * cH;
+
+  ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 1;
+  [3.00, 3.20, 3.60].forEach(v => {
+    if (v < minV || v > maxV) return;
+    const y = yOf(v);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+    ctx.fillStyle = '#bbb'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(1), pad.l - 2, y + 3);
+  });
+
+  const dangerY = yOf(3.00);
+  ctx.fillStyle = 'rgba(244,67,54,0.06)';
+  ctx.fillRect(pad.l, dangerY, cW, H - pad.b - dangerY);
+
+  ctx.strokeStyle = '#2196F3'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  data.forEach((r, i) => {
+    i === 0 ? ctx.moveTo(xOf(i), yOf(r.volt)) : ctx.lineTo(xOf(i), yOf(r.volt));
+  });
+  ctx.stroke();
+
+  data.forEach((r, i) => {
+    if (r.status === 1) {
+      ctx.fillStyle = '#f44336';
+      ctx.beginPath(); ctx.arc(xOf(i), yOf(r.volt), 3, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+}
+
+// ── 連線處理 ──────────────────────────────────────────────────
+// 修正 connectUSB
+async function openUSB(p) {
+  cancelBtAuto();
+  isManualDisconnect = false;
+  port = p;
+  try {
+    await port.open({ baudRate: 115200 });
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    writer = port.writable.getWriter();
+    setConnUI("USB 已連線", true);
+    addLog("SYS", "USB Connected");
+    document.getElementById('btn-hist').disabled = false;
+    document.getElementById('btn-ntfylog').disabled = false;
+    document.getElementById('btn-ntp').disabled = false;
+    
+    // ⚠️ 關鍵修正：先發送 SYNC，並延遲 500ms 再載入歷史紀錄，避免指令黏在一起衝擊 Hub
+    await sendCmd("SYNC");
+    setTimeout(() => {
+      if (port) loadHistory();
+    }, 500);
+
+    readUSB();
+  } catch(e) {
+    port = null;
+    throw e;
+  }
+}
+
+// 手動連線：由使用者點擊觸發，選擇裝置後交給 openUSB
+async function connectUSB() {
+  try {
+    await openUSB(await navigator.serial.requestPort());
+  } catch(e) { addLog("SYS", "USB 連線失敗"); }
+}
+
+async function readUSB() {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (port && port.readable && !isManualDisconnect) {
+    usbReader = port.readable.getReader();
+    try {
+      while (true) {
+        const { value, done } = await usbReader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let lines = buffer.split('\n');
+        buffer = lines.pop();
+        lines.forEach(line => { if (line.trim()) handleIncoming(line.trim()); });
+      }
+    } catch(e) {
+      // 讀取拋錯通常代表裝置端斷線（例如 EN 重置造成 USB 重新列舉），
+      // 不是使用者手動斷線；跳出迴圈後在下面統一處理 UI 復原。
+    } finally {
+      try { usbReader.releaseLock(); } catch(e) {}
+      usbReader = null;
+    }
+  }
+  // [J3] 迴圈結束但不是使用者手動按斷線 → 裝置端已經斷開，
+  // 網頁端狀態卻還停在「已連線」，之前這裡完全沒有處理，
+  // 使用者只會看到畫面卡住不動、像當機。這裡補上清理與提示。
+  if (!isManualDisconnect) {
+    addLog("SYS", "⚠️ USB 連線意外中斷（裝置重置或拔除）");
+    if (writer) { try { writer.releaseLock(); } catch(e) {} }
+    if (port)   { try { await port.close(); }     catch(e) {} }
+    writer = null; port = null;
+    setConnUI("已中斷（意外）", false);
+    document.getElementById('btn-hist').disabled = true;
+    document.getElementById('btn-ntfylog').disabled = true;
+    document.getElementById('btn-ntp').disabled = true;
+  }
+}
+
+function handleIncoming(text) {
+  if (text.startsWith("HIST_DATA,")) { handleHistData(text); return; }
+  if (text.startsWith("HIST_END,"))  { handleHistEnd(text);  return; }
+  if (text.startsWith("NTFYLOG_DATA,")) { handleNtfyLogData(text); return; }
+  if (text.startsWith("NTFYLOG_END,"))  { handleNtfyLogEnd(text);  return; }
+
+  addLog("RX", text);
+
+  if (text.startsWith("SYS:REBOOT")) {
+    addLog("SYS", "Hub 重啟偵測");
+  }
+
+  if (text.includes("ESP-ROM")) {
+    addLog("SYS", "Hub 重啟（ESP-ROM）");
+  }
+
+  if (text.startsWith("MAIL_UPDATE,")) {
+    const p = text.split(',');
+    if (p.length < 4) return;
+    const hasMail = p[1] === '1';
+    const volt = parseFloat(p[2]);
+    document.getElementById('mail-card').className = 'mail-info ' + (hasMail ? 'is-mail' : 'no-mail');
+    document.getElementById('mail-status-text').innerText = hasMail ? '📬 有信件！' : '📭 目前空箱';
+    document.getElementById('mail-dist').innerText = p[3];
+    document.getElementById('mail-volt').innerText = volt.toFixed(2);
+    const vs = document.getElementById('volt-status');
+    if (volt < 3.00)      { vs.textContent = '請充電'; vs.className = 'volt-status volt-crit'; }
+    else if (volt < 3.20) { vs.textContent = '偏低';   vs.className = 'volt-status volt-low'; }
+    else                  { vs.textContent = '正常';   vs.className = 'volt-status volt-ok'; }
+    // [N1] p[4]（若存在）是 Hub 端這筆量測真正發生的 Unix time，
+    // 比瀏覽器收到訊息當下的 Date.now() 準確——差別在 SYNC 重播舊狀態時：
+    // 例如 13:48 量測到、14:03 才重新連線收到 SYNC 回應，
+    // 用 Date.now() 會誤植成「14:03 剛發生」，用 p[4] 才會正確顯示 13:48。
+    // 沒有 p[4]（Hub 尚未 NTP 同步）時退回舊行為，用收到當下時間概略顯示。
+    const epoch = p.length >= 5 ? parseInt(p[4]) : NaN;
+    lastUpdateTimestamp = (!isNaN(epoch) && epoch > 1600000000) ? epoch * 1000 : Date.now();
+    updateRelativeTime();
+    document.getElementById('delay-hint').style.display = 'block';
+
+    // p[5]（若存在）是目前累積的「連續無信天數」，由 Hub 端計算好直接傳來，
+    // 有信件時 Hub 會是 0，這裡沒信才顯示，避免有信時畫面多一行沒意義的「0 天」。
+    const nmDaysEl = document.getElementById('no-mail-days');
+    const noMailDays = p.length >= 6 ? parseInt(p[5]) : NaN;
+    if (!hasMail && !isNaN(noMailDays) && noMailDays > 0) {
+      nmDaysEl.textContent = `📭 已連續 ${noMailDays} 天沒有偵測到信件`;
+      nmDaysEl.style.display = 'block';
+    } else {
+      nmDaysEl.style.display = 'none';
+    }
+  }
+  else if (text === "NOTIFY,CALIB_DONE") {
+    addLog("SYS", "✅ 校準完成");
+    clearCalibStatus();
+  }
+  else if (text === "NOTIFY,CALIB_ERR") {
+    addLog("SYS", "⚠️ 校準失敗：感測器異常，請重試");
+    clearCalibStatus();
+    const btn = document.getElementById('btn-calib');
+    btn.innerText = "校準失敗，請重試";
+    btn.style.background = "#f44336";
+    setTimeout(() => {
+      btn.innerText = "重新校準基準距離";
+      btn.style.background = "";
+    }, 5000);
+  }
+  else if (text === "NOTIFY,SENSOR_ERR") {
+    addLog("SYS", "感測器異常：量測無效");
+    document.getElementById('mail-card').className = 'mail-info sensor-err';
+    document.getElementById('mail-status-text').innerText = '⚠️ 感測器異常';
+    document.getElementById('mail-dist').innerText = '--';
+  }
+  else if (text === "NOTIFY,NTP_OK") {
+    addLog("SYS", "✅ Hub 時間同步成功");
+    document.getElementById('btn-ntp').disabled = false;
+    document.getElementById('btn-ntp').innerText = '🕐 同步 Hub 時間';
+  }
+  else if (text === "NOTIFY,NTP_FAIL") {
+    addLog("SYS", "❌ Hub 時間同步失敗（熱點未開？）");
+    document.getElementById('btn-ntp').disabled = false;
+    document.getElementById('btn-ntp').innerText = '🕐 同步 Hub 時間';
+  }
+  else if (text.startsWith("NOTIFY,NTFY_OK")) {
+    addLog("SYS", "✅ 推播通知已送出成功（若手機沒收到，問題在手機端/ntfy App）");
+  }
+  else if (text.startsWith("NOTIFY,NTFY_FAIL,WIFI")) {
+    const m = text.match(/try=(\d+)/);
+    addLog("SYS", `⚠️ 推播失敗：WiFi 連不上（第 ${m ? m[1] : '?'} 次嘗試）`);
+  }
+  else if (text.startsWith("NOTIFY,NTFY_FAIL,HTTP")) {
+    const codeM = text.match(/HTTP=(-?\d+)/);
+    const tryM  = text.match(/try=(\d+)/);
+    addLog("SYS", `⚠️ 推播失敗：WiFi 已連線，但 HTTP 回應碼 ${codeM ? codeM[1] : '?'}（第 ${tryM ? tryM[1] : '?'} 次嘗試）`);
+  }
+}
+
+function clearCalibStatus() {
+  const btn = document.getElementById('btn-calib');
+  btn.disabled = false;
+  btn.style.background = "";
+  btn.innerText = "重新校準基準距離";
+}
+
+function updateRelativeTime() {
+  if (!lastUpdateTimestamp) return;
+  const diffSec = Math.floor((Date.now() - lastUpdateTimestamp) / 1000);
+  const d = new Date(lastUpdateTimestamp);
+  const isToday = d.toDateString() === new Date().toDateString();
+  const dateStr = d.toLocaleDateString('zh-TW', { month:'numeric', day:'numeric' });
+  const timeStr = d.toLocaleTimeString('zh-TW', { hour:'2-digit', minute:'2-digit' });
+  const ago = diffSec < 60 ? `${diffSec} 秒前`
+    : diffSec < 3600 ? `${Math.floor(diffSec/60)} 分鐘前`
+    : `${Math.floor(diffSec/3600)} 小時前`;
+  document.getElementById('state-time').innerText =
+    `收到通知：${isToday ? '今天' : dateStr} ${timeStr}，${ago}`;
+}
+setInterval(updateRelativeTime, 1000);
+
+let bleWriteChain = Promise.resolve();
+
+async function sendCmd(cmd) {
+  if (!writer && !btChar) return;
+  addLog("TX", cmd);
+  const enc = new TextEncoder().encode(cmd + "\n");
+  try {
+    if (writer) {
+      await writer.write(enc);
+    } else if (btChar) {
+      // [K1] BLE 的 writeValue() 不能重疊呼叫，否則會丟出
+      // "GATT operation already in progress"。連線後自動送出
+      // SYNC 跟 HIST_REQ 幾乎同時觸發，若各自獨立 await 會互相
+      // 搶線；這裡把所有 BLE 寫入串成同一條 chain 強制排隊，
+      // 不管呼叫端有沒有記得 await，都不會再撞在一起。
+      const doWrite = async () => {
+        for (let i = 0; i < enc.length; i += BLE_MTU) {
+          await btChar.writeValue(enc.slice(i, i + BLE_MTU));
+          if (i + BLE_MTU < enc.length) await new Promise(r => setTimeout(r, 20));
+        }
+      };
+      bleWriteChain = bleWriteChain.catch(() => {}).then(doWrite);
+      await bleWriteChain;
+    }
+  } catch(e) { addLog("SYS", `發送失敗：${cmd}`); }
+}
+
+function requestCalib() {
+  const btn = document.getElementById('btn-calib');
+  btn.disabled = true;
+  btn.innerText = "校準中...";
+  sendCmd('CALIB_REQ');
+  // 5 秒後若無回應自動恢復（正常應立刻收到 CALIB_DONE 或 CALIB_ERR）
+  setTimeout(() => {
+    if (btn.disabled) {
+      btn.disabled = false;
+      btn.innerText = "重試校準";
+      addLog("SYS", "校準請求超時");
+    }
+  }, 5000);
+}
+
+function requestNtpSync() {
+  const btn = document.getElementById('btn-ntp');
+  btn.disabled = true;
+  btn.innerText = '同步中...';
+  sendCmd('NTP_SYNC');
+  // 20 秒後若無回應自動恢復
+  setTimeout(() => {
+    if (btn.disabled) {
+      btn.disabled = false;
+      btn.innerText = '🕐 同步 Hub 時間';
+    }
+  }, 20000);
+}
+
+async function openBT(dev) {
+  cancelBtAuto();
+  isManualDisconnect = false;
+  bleWriteChain = Promise.resolve();
+  bleRxBuffer = '';
+  btDevice = dev;
+  try {
+    const server  = await dev.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    btChar = await service.getCharacteristic(CHAR_UUID);
+    await btChar.startNotifications();
+    btChar.addEventListener('characteristicvaluechanged', (e) => {
+      bleRxBuffer += new TextDecoder().decode(e.target.value);
+      let idx;
+      while ((idx = bleRxBuffer.indexOf('\n')) !== -1) {
+        const line = bleRxBuffer.slice(0, idx).trim();
+        bleRxBuffer = bleRxBuffer.slice(idx + 1);
+        if (line) handleIncoming(line);
+      }
+    });
+    // [J4] 裝置端斷線（超出範圍、Hub 重置等）時瀏覽器會觸發這個事件，
+    // 若沒有監聽，網頁會一直停在「藍牙已連線」的舊狀態。
+    dev.addEventListener('gattserverdisconnected', () => {
+      if (isManualDisconnect) return;  // 手動斷線已經在 disconnect() 裡處理過 UI
+      addLog("SYS", "⚠️ 藍牙連線意外中斷（裝置離線或超出範圍），等待自動重連");
+      btChar = null; btDevice = null; bleRxBuffer = '';
+      setConnUI("重連中…", false);
+      document.getElementById('btn-hist').disabled = true;
+      document.getElementById('btn-ntfylog').disabled = true;
+      document.getElementById('btn-ntp').disabled = true;
+      autoConnectBT(dev);   // [P3] 斷線後自動等 Hub 重新廣播並重連
+    }, { once: true });
+    // ... 前面藍牙連線邏輯不變 ...
+    setConnUI("藍牙已連線", true);
+    addLog("SYS", "BLE Connected");
+    document.getElementById('btn-hist').disabled = false;
+    document.getElementById('btn-ntfylog').disabled = false;
+    document.getElementById('btn-ntp').disabled = false;
+
+    // ⚠️ 關鍵修正：延遲載入歷史紀錄
+    await sendCmd("SYNC");
+    setTimeout(() => {
+      if (btDevice) loadHistory();
+    }, 500);
+
+  } catch(e) {
+    try { dev.gatt.disconnect(); } catch(_) {}
+    btDevice = null; btChar = null;
+    throw e;
+  }
+}
+
+// 手動連線：由使用者點擊觸發，選擇裝置後交給 openBT
+async function connectBT() {
+  try {
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'PWR_SENSOR' }],
+      optionalServices: [SERVICE_UUID]
+    });
+    await openBT(dev);
+  } catch(e) { addLog("SYS", "藍牙失敗"); }
+}
+
+// ── [P] 自動連線 ─────────────────────────────────────────────
+let btAutoCtrl = null;     // 取消 watchAdvertisements 用
+let autoBusy   = false;    // 避免 autoConnect 同時執行多次
+
+function cancelBtAuto() {
+  if (btAutoCtrl) { try { btAutoCtrl.abort(); } catch(e) {} btAutoCtrl = null; }
+}
+
+// 等 Hub 廣播，一收到就連線；失敗 3 秒後再試
+async function autoConnectBT(dev) {
+  if (isManualDisconnect) return;
+  cancelBtAuto();
+  const ctrl = new AbortController();
+  btAutoCtrl = ctrl;
+  const onAdv = async () => {
+    dev.removeEventListener('advertisementreceived', onAdv);
+    if (ctrl.signal.aborted || isManualDisconnect) return;
+    try {
+      await openBT(dev);
+    } catch(e) {
+      if (!isManualDisconnect) setTimeout(() => autoConnectBT(dev), 3000);
+    }
+  };
+  dev.addEventListener('advertisementreceived', onAdv);
+  try {
+    await dev.watchAdvertisements({ signal: ctrl.signal });
+  } catch(e) {
+    addLog("SYS", "此瀏覽器不支援藍牙自動重連（請手動連線）");
+  }
+}
+
+// 載入網頁 / USB 插上時呼叫：先試已授權的 USB，再試已授權的藍牙
+async function autoConnect() {
+  if (autoBusy || port || btDevice) return;
+  autoBusy = true;
+  try {
+    if (navigator.serial && navigator.serial.getPorts) {
+      const ports = await navigator.serial.getPorts();
+      if (ports.length) {
+        try { await openUSB(ports[0]); return; }
+        catch(e) { addLog("SYS", "USB 自動連線失敗"); }
+      }
+    }
+    if (navigator.bluetooth && navigator.bluetooth.getDevices) {
+      const devs = await navigator.bluetooth.getDevices();
+      const d = devs.find(x => x.name === 'PWR_SENSOR');
+      if (d) {
+        setConnUI("自動連線中…", false);
+        addLog("SYS", "等待 Hub 藍牙廣播…");
+        autoConnectBT(d);
+      }
+    }
+  } finally { autoBusy = false; }
+}
+
+async function disconnect() {
+  isManualDisconnect = true;
+  cancelBtAuto();
+  document.getElementById('btn-hist').disabled = true;
+  document.getElementById('btn-ntfylog').disabled = true;
+  document.getElementById('btn-ntp').disabled = true;
+  if (usbReader) {
+    try { await usbReader.cancel(); } catch(e) {}
+    await new Promise(r => setTimeout(r, 50));
+  }
+  if (writer)   { try { writer.releaseLock(); } catch(e) {} writer = null; }
+  if (port)     { try { await port.close(); }  catch(e) {} port = null; }
+  if (btDevice) { try { btDevice.gatt.disconnect(); } catch(e) {} }
+  btChar = null; btDevice = null; bleRxBuffer = '';
+  setConnUI("已中斷", false);
+  document.getElementById('mail-status-text').innerText = "等待連線...";
+  document.getElementById('no-mail-days').style.display = 'none';
+}
+
+function setConnUI(text, on) {
+  document.getElementById('conn-stat').innerText = text;
+  document.getElementById('conn-dot').className = "conn-dot" + (on ? " on" : "");
+}
+
+window.addEventListener('resize', () => { if (histAll.length > 0) drawVoltChart(); });
+
+// [J1][J2] 分頁關閉/重新整理/切換前先把序列埠關乾淨。
+// 手動點「斷線」之外，這是唯一會清理 DTR/RTS 狀態的路徑；
+// 少了它，直接關分頁會讓序列埠停在未關閉狀態，下次開啟網頁
+// 或裝置重新列舉時容易造成 Hub 端卡在重置迴圈、網頁端也讀不到東西。
+window.addEventListener('beforeunload', () => { disconnect(); });
+window.addEventListener('pagehide',     () => { disconnect(); });
+
+// [J3] 實體 USB 裝置消失（拔線、或 EN 重置造成的重新列舉）時，
+// 瀏覽器會觸發這個事件；readUSB() 內的 read() 拋錯只能偵測到
+// 「讀不到東西了」，這裡則是作業系統層級確認裝置真的離線，
+// 兩者一起才能涵蓋所有斷線情境，避免畫面卡在「已連線」。
+if (navigator.serial) {
+  navigator.serial.addEventListener('disconnect', (e) => {
+    if (isManualDisconnect) return;
+    if (port && e.target !== port) return;  // 不是目前這個裝置
+    addLog("SYS", "⚠️ USB 裝置已離線");
+    setConnUI("已中斷（意外）", false);
+    document.getElementById('btn-hist').disabled = true;
+    document.getElementById('btn-ntfylog').disabled = true;
+    document.getElementById('btn-ntp').disabled = true;
+  });
+}
+
+
+// [P2] USB 重新插上（已授權過的裝置）時自動接回；延遲一下等裝置列舉完成
+if (navigator.serial) {
+  navigator.serial.addEventListener('connect', () => {
+    if (port || isManualDisconnect) return;
+    setTimeout(autoConnect, 800);
+  });
+}
+
+// [P1] 開啟網頁就自動連線（首次仍需手動授權一次）
+window.addEventListener('load', () => { autoConnect(); });
+
+</script>
+</body>
+</html>

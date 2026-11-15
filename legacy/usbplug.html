@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>智慧 USB 插座 / 遙控器控制台</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background: #121212;
+      color: #ffffff;
+      margin: 0;
+    }
+    h2 { margin-bottom: 10px; }
+    button {
+      padding: 10px 16px;
+      font-size: 14px;
+      margin: 6px 4px;
+      border-radius: 8px;
+      border: none;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+    button:hover { opacity: 0.9; }
+    button:active { transform: scale(0.98); }
+    input, select {
+      padding: 10px;
+      font-size: 15px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #222;
+      color: white;
+      margin: 6px 0;
+      box-sizing: border-box;
+      width: 80%;
+      max-width: 260px;
+    }
+    .time-picker {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin: 6px 0;
+    }
+    .time-picker select {
+      width: 80px;
+      padding: 8px;
+      text-align: center;
+    }
+    .card {
+      background: #1e1e1e;
+      padding: 18px;
+      border-radius: 12px;
+      margin: 14px auto;
+      max-width: 380px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      text-align: center;
+    }
+    .card h3 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      font-size: 18px;
+      color: #e0e0e0;
+    }
+    label {
+      display: inline-block;
+      margin: 6px 0;
+      font-size: 14px;
+      color: #bbb;
+    }
+    .btn-on { background: #28a745; width: 42%; }
+    .btn-off { background: #dc3545; width: 42%; }
+    .btn-delete {
+      background: #dc3545;
+      padding: 4px 10px;
+      font-size: 12px;
+      margin-left: 8px;
+      border-radius: 6px;
+    }
+    .status-box {
+      font-size: 18px;
+      font-weight: bold;
+      margin: 10px 0;
+      padding: 8px;
+      border-radius: 6px;
+      background: #2a2a2a;
+    }
+    .hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 6px;
+    }
+    .tag-holiday {
+      display: inline-block;
+      background: #333;
+      color: #ff9800;
+      border: 1px solid #ff9800;
+      padding: 4px 8px;
+      border-radius: 16px;
+      font-size: 13px;
+      margin: 4px;
+    }
+    .tag-workday {
+      display: inline-block;
+      background: #333;
+      color: #17a2b8;
+      border: 1px solid #17a2b8;
+      padding: 4px 8px;
+      border-radius: 16px;
+      font-size: 13px;
+      margin: 4px;
+    }
+    .del-btn {
+      color: #dc3545;
+      margin-left: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .holiday-list-box {
+      text-align: left;
+      background: #181818;
+      border: 1px solid #333;
+      padding: 12px;
+      border-radius: 8px;
+      max-height: 250px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    .sched-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      background: #282828;
+      margin: 6px 0;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    .month-header {
+      background: #2a2a2a;
+      color: #20c997;
+      padding: 4px 8px;
+      font-weight: bold;
+      border-radius: 4px;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    .holiday-item {
+      padding: 5px 0;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #pinAuthSection, #plugSection, #remoteSection { display: none; }
+  </style>
+</head>
+<body>
+
+  <h2>⚡ 智慧 USB 插座 / 遙控器控制台</h2>
+
+  <!-- 連線區塊 -->
+  <div class="card">
+    <button onclick="connectBLE()">🔗 搜尋並連線裝置</button>
+    <p id="bleStatus" style="color: #aaa; font-weight: bold;">連線狀態: 未連線</p>
+
+    <div id="pinAuthSection">
+      <label for="authPinInput">🔑 請輸入 PIN：</label><br>
+      <input type="password" id="authPinInput" placeholder="4~10 位數字 PIN" maxlength="10" inputmode="numeric"><br>
+      <button onclick="submitPin()" style="background: #6f42c1;">送出 PIN 驗證</button>
+    </div>
+  </div>
+
+  <!-- ================= 被控端 (插座) 專用區塊 ================= -->
+  <div id="plugSection">
+    <!-- 即時控制 -->
+    <div class="card">
+      <h3>插座狀態與控制</h3>
+      <div id="powerStatus" class="status-box" style="color: #888;">目前狀態: 未知</div>
+      <button onclick="sendCmd('ON')" class="btn-on">⚡ 開啟 (ON)</button>
+      <button onclick="sendCmd('OFF')" class="btn-off">🔌 關閉(OFF)</button>
+    </div>
+
+    <!-- 目前生效排程顯示卡片 -->
+    <div class="card">
+      <h3>📋 目前生效的排程</h3>
+      <div id="scheduleListDisplay">
+        <div style="color: #888; font-size: 13px;">載入中...</div>
+      </div>
+    </div>
+
+    <!-- 系統時間與排程狀態 -->
+    <div class="card">
+      <h3>⏰ 裝置系統時間與狀態</h3>
+      <p id="rtcTimeDisplay" style="color: #17a2b8; font-weight: bold;">裝置時間: 未取得</p>
+      <p id="groupNodeDisplay" style="color: #20c997; font-size: 14px;">對應遙控: 未讀取</p>
+      <p id="pinStatusDisplay" style="color: #9c27b0; font-size: 14px;">PIN 保護: 未知</p>
+      <button onclick="sendCmd('GET_INFO')" style="background: #6c757d; font-size: 13px;">🔄 讀取插座狀態</button>
+      <button onclick="syncTimeNow()" style="background: #17a2b8; font-size: 13px;">🕒 快速對時 (同步瀏覽器時間)</button>
+    </div>
+
+    <!-- 設定 / 修改平假日排程 -->
+    <div class="card">
+      <h3>⚙️ 設定 / 修改排程</h3>
+
+      <!-- 平日時間設定 -->
+      <div id="weekdayGroup" style="border-top: 1px dashed #444; padding-top: 10px; margin-top: 6px;">
+        <h4 style="margin: 6px 0; color: #20c997;">📅 平日排程 (週一 ~ 週五 + 補上班日)</h4>
+        <label>開啟時間：</label>
+        <div class="time-picker">
+          <select id="wdOnH"></select> 時 <span>:</span> <select id="wdOnM"></select> 分
+        </div><br>
+        <label>關閉時間：</label>
+        <div class="time-picker">
+          <select id="wdOffH"></select> 時 <span>:</span> <select id="wdOffM"></select> 分
+        </div><br>
+        <button onclick="saveSingleSchedule('weekday')" style="background: #20c997;">💾 儲存 / 更新平日排程</button>
+      </div>
+
+      <!-- 假日時間設定 -->
+      <div id="weekendGroup" style="border-top: 1px dashed #444; padding-top: 10px; margin-top: 16px;">
+        <h4 style="margin: 6px 0; color: #ff9800;">🎉 假日排程 (週六 ~ 週日 + 自訂放假日)</h4>
+        <label>開啟時間：</label>
+        <div class="time-picker">
+          <select id="weOnH"></select> 時 <span>:</span> <select id="weOnM"></select> 分
+        </div><br>
+        <label>關閉時間：</label>
+        <div class="time-picker">
+          <select id="weOffH"></select> 時 <span>:</span> <select id="weOffM"></select> 分
+        </div><br>
+        <button onclick="saveSingleSchedule('weekend')" style="background: #ff9800;">💾 儲存 / 更新假日排程</button>
+      </div>
+    </div>
+
+    <!-- 設定補班/補假日 -->
+    <div class="card">
+      <h3>📅 設定補上班與放假日</h3>
+      <p class="hint">設定為放假套用「假日排程」；設定為補班套用「平日排程」。</p>
+      
+      <input type="date" id="specialDatePicker"><br>
+      <select id="specialDateType" style="width: 80%; max-width: 260px;">
+        <option value="H">🎉 放假日</option>
+        <option value="W">💼 補上班日 (補班)</option>
+      </select><br>
+      <button onclick="addSpecialDate()" style="background: #ff9800;">➕ 新增特殊日期</button>
+      
+      <div style="margin-top: 12px;">
+        <label>已設定的特殊日期：</label>
+        <div id="specialDateTags" style="margin-top: 6px;"></div>
+      </div>
+      <button onclick="saveSpecialDaysToDevice()" style="background: #28a745; margin-top: 12px;">💾 儲存日期變更至裝置</button>
+    </div>
+
+    <!-- 未來 180 天補班 / 放假清單 -->
+    <div class="card" style="max-width: 420px;">
+      <h3>🗓️ 未來 180 天補班 / 放假清單</h3>
+      <p class="hint">僅顯示您自訂加入的放假與補上班日 (依月份劃分)：</p>
+      <div id="holiday180Preview" class="holiday-list-box"></div>
+    </div>
+
+    <!-- Wi-Fi 與 NTP 對時設定卡片 -->
+    <div class="card">
+      <h3>🌐 Wi-Fi 與自動對時</h3>
+      <label for="wifiSsidInput">Wi-Fi 名稱 (SSID)：</label><br>
+      <input type="text" id="wifiSsidInput" placeholder="輸入 Wi-Fi 名稱"><br>
+      
+      <label for="wifiPassInput">Wi-Fi 密碼：</label><br>
+      <input type="password" id="wifiPassInput" placeholder="無密碼請留空"><br><br>
+
+      <label>自動對時間 (24小時制)：</label><br>
+      <div class="time-picker">
+        <select id="ntpTimeH"></select> 時
+        <span>:</span>
+        <select id="ntpTimeM"></select> 分
+      </div><br>
+
+      <button onclick="saveWifiNtpConfig()" style="background: #28a745; margin-top: 10px;">💾 儲存 Wi-Fi & 對時設定</button>
+      <button onclick="clearWifiNtpConfig()" style="background: #dc3545; margin-top: 10px;">🗑️ 清除 Wi-Fi & 對時設定</button>
+      <p class="hint">💡 若設定 Wi-Fi，插座將會在每日指定時間自動連網進行 NTP 對時。</p>
+    </div>
+
+    <!-- 上電預設狀態設定卡片 -->
+    <div class="card">
+      <h3>🔌 上電預設開關狀態</h3>
+      <label for="powerOnSelect">當插座重新通電時：</label><br>
+      <select id="powerOnSelect">
+        <option value="0">預設關閉 (OFF)</option>
+        <option value="1">預設開啟 (ON)</option>
+        <option value="2">恢復斷電前狀態</option>
+      </select><br>
+      <button onclick="savePowerOnConfig()" style="background: #e67e22; margin-top: 8px;">💾 儲存上電設定</button>
+    </div>
+
+    <!-- 修改藍芽名稱 -->
+    <div class="card">
+      <h3>🏷️ 修改插座 BLE 名稱</h3>
+      <input type="text" id="newPlugNameInput" placeholder="可輸入中文 (例: 智慧插座-01)" maxlength="20"><br>
+      <button onclick="savePlugName()" style="background: #e67e22;">💾 儲存並重啟插座</button>
+      <p class="hint">⚠️ 支援中文與英數，建議控制在 6 個中文字以內 (上限 20 Bytes)。</p>
+    </div>
+
+    <!-- 修改遙控器群組與組別 -->
+    <div class="card">
+      <h3>⚙️ 修改控制權 (遙控群組與組別)</h3>
+      <label for="plugGroupSelect">對應遙控器：</label><br>
+      <select id="plugGroupSelect">
+        <option value="1">遙控器 1 (Group 1)</option>
+        <option value="2">遙控器 2 (Group 2)</option>
+        <option value="3">遙控器 3 (Group 3)</option>
+        <option value="4">遙控器 4 (Group 4)</option>
+        <option value="5">遙控器 5 (Group 5)</option>
+        <option value="6">遙控器 6 (Group 6)</option>
+        <option value="7">遙控器 7 (Group 7)</option>
+        <option value="8">遙控器 8 (Group 8)</option>
+        <option value="9">遙控器 9 (Group 9)</option>
+        <option value="10">遙控器 10 (Group 10)</option>
+      </select>
+      <br><br>
+      <label for="nodeSelect">對應組別號碼：</label><br>
+      <select id="nodeSelect">
+        <option value="1">第 1 組</option>
+        <option value="2">第 2 組</option>
+        <option value="3">第 3 組</option>
+        <option value="4">第 4 組</option>
+      </select>
+      <br><br>
+      <button onclick="savePlugGroupAndNode()" style="background: #20c997;">💾 儲存配對設定</button>
+    </div>
+
+    <!-- PIN 保護設定 -->
+    <div class="card">
+      <h3>🔑 PIN 保護設定</h3>
+      <input type="password" id="newPinInput" placeholder="4~10 位數字 PIN" maxlength="10" inputmode="numeric">
+      <br>
+      <button onclick="saveNewPin()" style="background: #6f42c1;">💾 啟用並設定 PIN</button>
+      <br>
+      <button onclick="disablePin()" style="background: #6c757d; margin-top: 10px;">🚫 停用 PIN</button>
+    </div>
+  </div>
+
+  <!-- ================= 遙控端 專用區塊 ================= -->
+  <div id="remoteSection">
+    <div class="card">
+      <h3>🎮 遙控器群組設定</h3>
+      <p id="remoteGroupDisplay" style="color: #17a2b8; font-weight: bold; font-size: 16px;">目前設定: 未讀取</p>
+      
+      <label for="remoteGroupSelect">修改此遙控器所屬群組：</label><br>
+      <select id="remoteGroupSelect">
+        <option value="1">遙控器 1 (Group 1)</option>
+        <option value="2">遙控器 2 (Group 2)</option>
+        <option value="3">遙控器 3 (Group 3)</option>
+        <option value="4">遙控器 4 (Group 4)</option>
+        <option value="5">遙控器 5 (Group 5)</option>
+        <option value="6">遙控器 6 (Group 6)</option>
+        <option value="7">遙控器 7 (Group 7)</option>
+        <option value="8">遙控器 8 (Group 8)</option>
+        <option value="9">遙控器 9 (Group 9)</option>
+        <option value="10">遙控器 10 (Group 10)</option>
+      </select>
+      <br><br>
+      <button onclick="saveRemoteGroup()" style="background: #ff9800;">💾 寫入群組設定</button>
+    </div>
+  </div>
+
+  <script>
+    let bleDevice, gattServer, controlChar;
+    let isAuthenticated = false;
+    let deviceTimeBase = null;       
+    let deviceTimeBaseMillis = 0;    
+    let clockTickInterval = null;    
+    const SERVICE_UUID = "69bb3531-4255-4acc-9667-6c066b29bc74";
+    const CHAR_UUID    = "e4f32c31-b8e4-4a9b-b329-8bb20ad32bd4";
+
+    let currentSchedState = {
+      wdEn: false, wdOnH: "01", wdOnM: "00", wdOffH: "03", wdOffM: "00",
+      weEn: false, weOnH: "06", weOnM: "00", weOffH: "09", weOffM: "00"
+    };
+
+    let specialDaysList = []; 
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function initTimeSelects() {
+      const hSelects = ['wdOnH', 'wdOffH', 'weOnH', 'weOffH', 'ntpTimeH'];
+      const mSelects = ['wdOnM', 'wdOffM', 'weOnM', 'weOffM', 'ntpTimeM'];
+
+      hSelects.forEach(id => {
+        let el = document.getElementById(id);
+        el.innerHTML = "";
+        for (let i = 0; i < 24; i++) el.add(new Option(pad2(i), pad2(i)));
+      });
+
+      mSelects.forEach(id => {
+        let el = document.getElementById(id);
+        el.innerHTML = "";
+        for (let i = 0; i < 60; i++) el.add(new Option(pad2(i), pad2(i)));
+      });
+
+      document.getElementById('wdOnH').value = "01";
+      document.getElementById('wdOnM').value = "00";
+      document.getElementById('wdOffH').value = "03";
+      document.getElementById('wdOffM').value = "00";
+
+      document.getElementById('weOnH').value = "06";
+      document.getElementById('weOnM').value = "00";
+      document.getElementById('weOffH').value = "09";
+      document.getElementById('weOffM').value = "00";
+
+      document.getElementById('ntpTimeH').value = "23";
+      document.getElementById('ntpTimeM').value = "30";
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initTimeSelects();
+      let today = new Date().toISOString().split('T')[0];
+      document.getElementById('specialDatePicker').value = today;
+    });
+
+    async function connectBLE() {
+      try {
+        isAuthenticated = false;
+        document.getElementById('pinAuthSection').style.display = "none";
+        document.getElementById('plugSection').style.display = "none";
+        document.getElementById('remoteSection').style.display = "none";
+
+        document.getElementById('bleStatus').innerText = "連線狀態: 搜尋中...";
+        document.getElementById('bleStatus').style.color = "#ffc107";
+
+        bleDevice = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }]
+        });
+
+        bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+        gattServer = await bleDevice.gatt.connect();
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        const service = await gattServer.getPrimaryService(SERVICE_UUID);
+        controlChar = await service.getCharacteristic(CHAR_UUID);
+
+        await controlChar.startNotifications();
+        controlChar.addEventListener('characteristicvaluechanged', handleStatusUpdate);
+
+        document.getElementById('bleStatus').innerText = "連線狀態: 已連線，確認中...";
+        document.getElementById('bleStatus').style.color = "#ffc107";
+
+        await rawSend("CHECK_AUTH");
+
+      } catch (err) {
+        document.getElementById('bleStatus').innerText = "連線狀態: 失敗 " + err.message;
+        document.getElementById('bleStatus').style.color = "#dc3545";
+        controlChar = null;
+      }
+    }
+
+    async function submitPin() {
+      const pin = document.getElementById('authPinInput').value.trim();
+      if (!/^[0-9]{4,10}$/.test(pin)) return alert("請輸入 4~10 位純數字 PIN 碼！");
+      await rawSend("AUTH:" + pin);
+    }
+
+    async function onAuthenticatedReady() {
+      isAuthenticated = true;
+      document.getElementById('pinAuthSection').style.display = "none";
+      document.getElementById('bleStatus').innerText = "連線狀態: 已連線 (" + (bleDevice.name || "未命名裝置") + ")";
+      document.getElementById('bleStatus').style.color = "#28a745";
+    
+      let nowSec = Math.floor(Date.now() / 1000);
+      await sendCmd("SET_TIME:" + nowSec);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await sendCmd("GET_INFO");
+      await new Promise(resolve => setTimeout(resolve, 200));
+      await sendCmd("GET_STATUS");
+    }
+
+    function handleStatusUpdate(event) {
+      let dec = new TextDecoder();
+      let msg = dec.decode(event.target.value);
+
+      if (msg === "AUTH:NONE" || msg === "AUTH:OK") {
+        onAuthenticatedReady();
+        return;
+      }
+      if (msg === "AUTH:REQUIRED") {
+        document.getElementById('bleStatus').innerText = "連線狀態: 已連線，需要輸入 PIN";
+        document.getElementById('pinAuthSection').style.display = "block";
+        return;
+      }
+      if (msg === "AUTH:FAIL") {
+        alert("PIN 碼錯誤！");
+        return;
+      }
+
+      if (msg.startsWith("REMOTE_INFO:")) {
+        document.getElementById('remoteSection').style.display = "block";
+        let gId = msg.substring(12);
+        document.getElementById('remoteGroupDisplay').innerText = `目前設定: 遙控器 ${gId} (Group ${gId})`;
+        document.getElementById('remoteGroupSelect').value = gId;
+
+        document.getElementById('bleStatus').innerText = "連線狀態: 已連線 (" + (bleDevice.name || "未命名裝置") + ")";
+        document.getElementById('bleStatus').style.color = "#28a745";
+      }
+      else if (msg.startsWith("PLUG_INFO:")) {
+        document.getElementById('plugSection').style.display = "block";
+
+        let data = msg.substring(10).split(',');
+        
+        let timeStr = data[0] || "";
+        currentSchedState.wdEn  = data[1] === "1";
+        currentSchedState.wdOnH = (data[2] || "01").padStart(2, '0');
+        currentSchedState.wdOnM = (data[3] || "00").padStart(2, '0');
+        currentSchedState.wdOffH= (data[4] || "03").padStart(2, '0');
+        currentSchedState.wdOffM= (data[5] || "00").padStart(2, '0');
+
+        currentSchedState.weEn  = data[6] === "1";
+        currentSchedState.weOnH = (data[7] || "06").padStart(2, '0');
+        currentSchedState.weOnM = (data[8] || "00").padStart(2, '0');
+        currentSchedState.weOffH= (data[9] || "09").padStart(2, '0');
+        currentSchedState.weOffM= (data[10] || "00").padStart(2, '0');
+
+        let pinEnabled = (data[11] !== undefined && data[11] !== "") ? parseInt(data[11]) : 0;
+        let groupId    = (data[12] !== undefined && data[12] !== "") ? parseInt(data[12]) : 1;
+        let nodeId     = (data[13] !== undefined && data[13] !== "") ? parseInt(data[13]) : 1;
+
+        let ssid = "";
+        try {
+          ssid = data[14] ? decodeURIComponent(data[14]) : "";
+        } catch (e) {
+          ssid = data[14] || "";
+        }
+
+        let ntpH = (data[15] !== undefined && data[15] !== "") ? data[15].padStart(2, '0') : "23";
+        let ntpM = (data[16] !== undefined && data[16] !== "") ? data[16].padStart(2, '0') : "30";
+
+        let pwrOnSt = data[17] !== undefined ? parseInt(data[17]) : 0;
+        let rawDays = data[18] || "";
+
+        specialDaysList = [];
+        if (rawDays.length > 0) {
+          let items = rawDays.split(';');
+          items.forEach(it => {
+            if (it.startsWith("H:")) specialDaysList.push({ date: it.substring(2), type: "H" });
+            else if (it.startsWith("W:")) specialDaysList.push({ date: it.substring(2), type: "W" });
+          });
+        }
+
+        if (timeStr) startClockTicking(timeStr);
+
+        document.getElementById('groupNodeDisplay').innerText = `對應遙控: 遙控器 ${groupId} - 第 ${nodeId} 組`;
+        document.getElementById('pinStatusDisplay').innerText = "PIN 保護: " + (pinEnabled ? "已啟用" : "未啟用（免密碼連線）");
+
+        document.getElementById('plugGroupSelect').value = groupId;
+        document.getElementById('nodeSelect').value = nodeId;
+
+        document.getElementById('wifiSsidInput').value = ssid;
+        document.getElementById('ntpTimeH').value = ntpH;
+        document.getElementById('ntpTimeM').value = ntpM;
+
+        document.getElementById('powerOnSelect').value = pwrOnSt;
+
+        document.getElementById('wdOnH').value = currentSchedState.wdOnH;
+        document.getElementById('wdOnM').value = currentSchedState.wdOnM;
+        document.getElementById('wdOffH').value = currentSchedState.wdOffH;
+        document.getElementById('wdOffM').value = currentSchedState.wdOffM;
+
+        document.getElementById('weOnH').value = currentSchedState.weOnH;
+        document.getElementById('weOnM').value = currentSchedState.weOnM;
+        document.getElementById('weOffH').value = currentSchedState.weOffH;
+        document.getElementById('weOffM').value = currentSchedState.weOffM;
+
+        renderScheduleList();
+        renderSpecialDateTags();
+        render180DaysHolidays();
+      }
+      else if (msg === "STATUS:1") {
+        document.getElementById('powerStatus').innerText = "目前狀態: 🟢 已開啟";
+        document.getElementById('powerStatus').style.color = "#28a745";
+      } else if (msg === "STATUS:0") {
+        document.getElementById('powerStatus').innerText = "目前狀態: 🔴 已關閉";
+        document.getElementById('powerStatus').style.color = "#dc3545";
+      }
+    }
+
+    function renderScheduleList() {
+      let box = document.getElementById('scheduleListDisplay');
+      box.innerHTML = "";
+
+      let hasSched = false;
+
+      if (currentSchedState.wdEn) {
+        hasSched = true;
+        let item = document.createElement('div');
+        item.className = 'sched-item';
+        item.innerHTML = `
+          <span>📅 <b>平日：</b>${currentSchedState.wdOnH}:${currentSchedState.wdOnM} 開 - ${currentSchedState.wdOffH}:${currentSchedState.wdOffM} 關</span>
+          <button class="btn-delete" onclick="deleteSchedule('weekday')">🗑️ 刪除排程</button>
+        `;
+        box.appendChild(item);
+      }
+
+      if (currentSchedState.weEn) {
+        hasSched = true;
+        let item = document.createElement('div');
+        item.className = 'sched-item';
+        item.innerHTML = `
+          <span>🎉 <b>假日：</b>${currentSchedState.weOnH}:${currentSchedState.weOnM} 開 - ${currentSchedState.weOffH}:${currentSchedState.weOffM} 關</span>
+          <button class="btn-delete" onclick="deleteSchedule('weekend')">🗑️ 刪除排程</button>
+        `;
+        box.appendChild(item);
+      }
+
+      if (!hasSched) {
+        box.innerHTML = `<div style="color: #888; font-size: 14px; padding: 6px;">目前未設定任何自動排程</div>`;
+      }
+    }
+
+    async function saveSingleSchedule(type) {
+      if (type === 'weekday') {
+        currentSchedState.wdEn   = true;
+        currentSchedState.wdOnH  = document.getElementById('wdOnH').value;
+        currentSchedState.wdOnM  = document.getElementById('wdOnM').value;
+        currentSchedState.wdOffH = document.getElementById('wdOffH').value;
+        currentSchedState.wdOffM = document.getElementById('wdOffM').value;
+      } else if (type === 'weekend') {
+        currentSchedState.weEn   = true;
+        currentSchedState.weOnH  = document.getElementById('weOnH').value;
+        currentSchedState.weOnM  = document.getElementById('weOnM').value;
+        currentSchedState.weOffH = document.getElementById('weOffH').value;
+        currentSchedState.weOffM = document.getElementById('weOffM').value;
+      }
+
+      await sendCurrentSchedulePayload();
+    }
+
+    async function deleteSchedule(type) {
+      if (type === 'weekday') currentSchedState.wdEn = false;
+      else if (type === 'weekend') currentSchedState.weEn = false;
+
+      await sendCurrentSchedulePayload();
+    }
+
+    async function sendCurrentSchedulePayload() {
+      let cmdStr = `SET_TIMER:${currentSchedState.wdEn ? 1 : 0},` +
+                   `${parseInt(currentSchedState.wdOnH)},${parseInt(currentSchedState.wdOnM)},` +
+                   `${parseInt(currentSchedState.wdOffH)},${parseInt(currentSchedState.wdOffM)},` +
+                   `${currentSchedState.weEn ? 1 : 0},` +
+                   `${parseInt(currentSchedState.weOnH)},${parseInt(currentSchedState.weOnM)},` +
+                   `${parseInt(currentSchedState.weOffH)},${parseInt(currentSchedState.weOffM)}`;
+
+      if (await sendCmd(cmdStr)) {
+        renderScheduleList();
+      }
+    }
+
+    function onDisconnected() {
+      document.getElementById('bleStatus').innerText = "連線狀態: 已斷開連線";
+      document.getElementById('bleStatus').style.color = "#dc3545";
+      document.getElementById('plugSection').style.display = "none";
+      document.getElementById('remoteSection').style.display = "none";
+      document.getElementById('pinAuthSection').style.display = "none";
+      controlChar = null;
+      isAuthenticated = false;
+      stopClockTicking();
+    }
+
+    function startClockTicking(timeStr) {
+      let parts = timeStr.split(' ');
+      if (parts.length < 2) return;
+      let dateParts = parts[0].split('-').map(Number);
+      let timeParts = parts[1].split(':').map(Number);
+
+      deviceTimeBase = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], timeParts[0], timeParts[1], timeParts[2]);
+      deviceTimeBaseMillis = Date.now();
+
+      updateClockDisplay();
+      if (clockTickInterval) clearInterval(clockTickInterval);
+      clockTickInterval = setInterval(updateClockDisplay, 1000);
+    }
+
+    function updateClockDisplay() {
+      if (!deviceTimeBase) return;
+      let elapsed = Date.now() - deviceTimeBaseMillis;
+      let current = new Date(deviceTimeBase.getTime() + elapsed);
+      let display = `${current.getFullYear()}-${pad2(current.getMonth() + 1)}-${pad2(current.getDate())} `
+                   + `${pad2(current.getHours())}:${pad2(current.getMinutes())}:${pad2(current.getSeconds())}`;
+      document.getElementById('rtcTimeDisplay').innerText = "裝置時間: " + display;
+    }
+
+    function stopClockTicking() {
+      if (clockTickInterval) clearInterval(clockTickInterval);
+      clockTickInterval = null;
+      deviceTimeBase = null;
+    }
+
+    async function rawSend(cmd) {
+      if (!gattServer || !gattServer.connected || !controlChar) {
+        alert("藍牙未連線！");
+        return false;
+      }
+      try {
+        let enc = new TextEncoder();
+        await controlChar.writeValue(enc.encode(cmd));
+        return true;
+      } catch (err) {
+        console.error("指令發送失敗:", err);
+        alert("指令發送失敗：" + err.message);
+        return false;
+      }
+    }
+
+    async function sendCmd(cmd) {
+      if (!isAuthenticated) {
+        alert("尚未完成連線驗證！");
+        return false;
+      }
+      return await rawSend(cmd);
+    }
+
+    async function syncTimeNow() {
+      let nowSec = Math.floor(Date.now() / 1000);
+      if (await sendCmd("SET_TIME:" + nowSec)) {
+        alert("對時指令已送出！");
+      }
+    }
+
+    async function savePowerOnConfig() {
+      let val = document.getElementById('powerOnSelect').value;
+      if (await sendCmd("SET_POWERON:" + val)) {
+        alert("上電預設狀態已儲存！");
+      }
+    }
+
+    async function saveWifiNtpConfig() {
+      let ssid = document.getElementById('wifiSsidInput').value;
+      let pass = document.getElementById('wifiPassInput').value;
+      let nH = parseInt(document.getElementById('ntpTimeH').value);
+      let nM = parseInt(document.getElementById('ntpTimeM').value);
+
+      if (!ssid) return alert("請輸入 Wi-Fi 名稱！");
+
+      const encSsid = encodeURIComponent(ssid);
+      const encPass = encodeURIComponent(pass);
+
+      if (await sendCmd(`SET_WIFI:${encSsid},${encPass},${nH},${nM}`)) {
+        alert("Wi-Fi 與 NTP 自動對時設定已儲存！");
+      }
+    }
+
+    async function clearWifiNtpConfig() {
+      if (confirm("確定要清除插座內的 Wi-Fi 與 NTP 自動對時設定嗎？")) {
+        document.getElementById('wifiSsidInput').value = "";
+        document.getElementById('wifiPassInput').value = "";
+        if (await sendCmd("SET_WIFI:,,23,30")) {
+          alert("已送出清除 Wi-Fi 與 NTP 設定指令！");
+        }
+      }
+    }
+
+    async function savePlugName() {
+      let newName = document.getElementById('newPlugNameInput').value.trim();
+      if (!newName) return alert("請輸入新的裝置名稱！");
+    
+      let encoder = new TextEncoder();
+      let byteLen = encoder.encode(newName).length;
+    
+      if (byteLen > 20) {
+        return alert(`名稱長度過長！\n目前長度為 ${byteLen} Bytes，請控制在 20 Bytes 以內（約 6 個中文字）。`); 
+      }
+    
+      if (confirm(`確定要將插座藍芽名稱修改為「${newName}」嗎？\n送出後插座將會自動重啟！`)) { 
+        if (await sendCmd("SET_NAME:" + newName)) { 
+          alert("設定已送出！插座正在重啟中，請重新連線。"); 
+        }
+      }
+    }
+
+    async function savePlugGroupAndNode() {
+      let gVal = document.getElementById('plugGroupSelect').value;
+      let nVal = document.getElementById('nodeSelect').value;
+
+      if (await sendCmd(`SET_GROUP_NODE:${gVal},${nVal}`)) {
+        alert(`已成功更新插座設定！現在由 [遙控器 ${gVal}] 的 [第 ${nVal} 組] 控制。`);
+      }
+    }
+
+    async function saveRemoteGroup() {
+      let gVal = document.getElementById('remoteGroupSelect').value;
+      if (await rawSend("SET_REMOTE_GROUP:" + gVal)) {
+        alert(`已成功將遙控器設定為：[遙控器 ${gVal}]！`);
+      }
+    }
+
+    async function saveNewPin() {
+      let newPin = document.getElementById('newPinInput').value.trim();
+      if (!/^[0-9]{4,10}$/.test(newPin)) return alert("PIN 碼長度需為 4~10 位純數字！");
+      if (await sendCmd("SET_PIN:" + newPin)) {
+        document.getElementById('newPinInput').value = "";
+        alert("PIN 保護已啟用！");
+      }
+    }
+
+    async function disablePin() {
+      if (await sendCmd("DISABLE_PIN")) {
+        alert("PIN 保護已停用。");
+      }
+    }
+
+    // ------------------- 特殊日期邏輯 -------------------
+    function addSpecialDate() {
+      let dateVal = document.getElementById('specialDatePicker').value;
+      let typeVal = document.getElementById('specialDateType').value;
+      if (!dateVal) return alert("請選擇日期！");
+
+      let idx = specialDaysList.findIndex(item => item.date === dateVal);
+      if (idx !== -1) specialDaysList[idx].type = typeVal;
+      else specialDaysList.push({ date: dateVal, type: typeVal });
+
+      specialDaysList.sort((a, b) => a.date.localeCompare(b.date));
+      renderSpecialDateTags();
+      render180DaysHolidays();
+    }
+
+    function removeSpecialDate(dateStr) {
+      specialDaysList = specialDaysList.filter(item => item.date !== dateStr);
+      renderSpecialDateTags();
+      render180DaysHolidays();
+    }
+
+    function renderSpecialDateTags() {
+      let container = document.getElementById('specialDateTags');
+      container.innerHTML = "";
+      if (specialDaysList.length === 0) {
+        container.innerHTML = `<span style="color:#666; font-size:12px;">無設定自訂放假/補班日</span>`;
+        return;
+      }
+      specialDaysList.forEach(item => {
+        let tag = document.createElement('span');
+        let isHoliday = (item.type === "H");
+        tag.className = isHoliday ? 'tag-holiday' : 'tag-workday';
+        let typeName = isHoliday ? "放假" : "補班";
+        tag.innerHTML = `${item.date} [${typeName}] <span class="del-btn" onclick="removeSpecialDate('${item.date}')">✕</span>`;
+        container.appendChild(tag);
+      });
+    }
+
+    async function saveSpecialDaysToDevice() {
+      let payload = specialDaysList.map(item => `${item.type}:${item.date}`).join(';');
+      if (await sendCmd("SET_HOLIDAYS:" + payload)) {
+        alert("自訂放假/補班日已成功寫入裝置！");
+      }
+    }
+
+    function render180DaysHolidays() {
+      let box = document.getElementById('holiday180Preview');
+      box.innerHTML = "";
+
+      let now = new Date();
+      let weekDays = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+
+      let monthlyGroup = {};
+      let totalCount = 0;
+
+      for (let i = 0; i < 180; i++) {
+        let target = new Date(now.getTime() + i * 86400000);
+        let dateStr = target.getFullYear() + "-" + pad2(target.getMonth() + 1) + "-" + pad2(target.getDate());
+        let monthKey = `${target.getFullYear()}年 ${pad2(target.getMonth() + 1)}月`;
+        let wday = target.getDay();
+
+        let found = specialDaysList.find(item => item.date === dateStr);
+        if (found) {
+          totalCount++;
+          if (!monthlyGroup[monthKey]) monthlyGroup[monthKey] = [];
+          monthlyGroup[monthKey].push({ dateStr: dateStr, wdayStr: weekDays[wday], type: found.type });
+        }
+      }
+
+      if (totalCount === 0) {
+        box.innerHTML = `<div style="color:#888; text-align:center; padding:10px;">未來的 180 天內無自訂放假或補班日</div>`;
+        return;
+      }
+
+      for (let mKey in monthlyGroup) {
+        let mHeader = document.createElement('div');
+        mHeader.className = 'month-header';
+        mHeader.innerText = mKey;
+        box.appendChild(mHeader);
+
+        monthlyGroup[mKey].forEach(item => {
+          let row = document.createElement('div');
+          row.className = 'holiday-item';
+          let isHoliday = (item.type === "H");
+          let tagText = isHoliday ? "🎉 自訂放假" : "💼 補上班日";
+          let color = isHoliday ? "#ff9800" : "#17a2b8";
+
+          row.innerHTML = `<span>${item.dateStr} (${item.wdayStr})</span><span style="color:${color}; font-weight:bold;">${tagText}</span>`;
+          box.appendChild(row);
+        });
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IR 遙控器控制台</title>
+<style>
+  :root { --primary:#2196F3; --accent:#e91e63; --bg:#f4f7f6; --success:#4caf50; --danger:#f44336; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); padding:20px; max-width:600px; margin:auto; color:#333; }
+  .card { background:white; padding:18px; border-radius:15px; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-bottom:15px; }
+  h3 { margin-top:0; font-size:1.1rem; display:flex; align-items:center; gap:8px; }
+  .status-bar { font-size:12px; color:#666; margin-bottom:10px; display:flex; justify-content:space-between; }
+  #log { background:#222; color:#0f0; padding:10px; border-radius:8px; font-family:monospace; font-size:11px; height:45px; overflow-y:auto; margin:10px 0; }
+  .learn-zone { display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:#f9f9f9; padding:10px; border-radius:8px; }
+  .btn-learn { background:var(--accent); color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; flex-grow:1; font-weight:bold; }
+  .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:15px; }
+  .btn-ir { background:white; border:2px solid #eee; height:110px; border-radius:12px; cursor:pointer; transition:.2s; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; }
+  .btn-ir:active { transform:scale(.95); }
+  .btn-ir.has-data { border-color:var(--primary); background:#e3f2fd; }
+  .btn-ir b { font-size:14px; margin-top:4px; color:#1a237e; }
+  .btn-ir small { font-size:10px; color:#999; }
+  .btn-del { position:absolute; top:4px; right:4px; background:#f44336; color:white; border:none; border-radius:50%; width:18px; height:18px; font-size:11px; cursor:pointer; display:none; line-height:18px; padding:0; }
+  .edit-mode .btn-del { display:block; }
+  .edit-mode .btn-ir { border-style:dashed; animation:shake .5s infinite ease-in-out; }
+  @keyframes shake { 0%{transform:rotate(-.5deg)} 50%{transform:rotate(.5deg)} 100%{transform:rotate(-.5deg)} }
+  .nav-btns { display:flex; gap:8px; margin-bottom:15px; }
+  .nav-btns button { flex:1; padding:10px; border:none; border-radius:8px; cursor:pointer; font-weight:bold; transition:.15s; }
+  .nav-btns button:active { opacity:.75; }
+  .conn-dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#ccc; margin-right:4px; }
+  .conn-dot.on { background:#4caf50; animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%{opacity:1} 50%{opacity:.4} 100%{opacity:1} }
+  @keyframes flashRed { 0%{background:#f44336} 100%{background:#444} }
+  .flash-warn { animation:flashRed .4s ease-out; }
+
+  /* 分組 tabs */
+  .group-bar { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+  .tab { padding:5px 14px; border-radius:20px; border:1.5px solid #ddd; background:white; font-size:12px; cursor:pointer; transition:.15s; white-space:nowrap; }
+  .tab.active { background:var(--primary); color:white; border-color:var(--primary); }
+  .tab-add { padding:5px 10px; border-radius:20px; border:1.5px dashed #bbb; background:none; font-size:12px; cursor:pointer; color:#888; }
+  .tab-add:hover { border-color:var(--primary); color:var(--primary); }
+  .group-actions { display:flex; gap:6px; margin-bottom:4px; }
+  .group-actions button { font-size:11px; padding:4px 10px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; }
+  .group-actions button:hover { background:#f0f0f0; }
+
+  /* 匯出匯入 */
+  .io-bar { display:flex; gap:8px; margin-top:12px; }
+  .io-bar button { flex:1; font-size:12px; padding:7px; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer; }
+  .io-bar button:hover { background:#f0f0f0; }
+
+  /* Serial 日誌 */
+  .serial-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .serial-header h3 { margin:0; }
+  .serial-btns { display:flex; gap:6px; }
+  .serial-btns button { font-size:11px; padding:4px 8px; border:1px solid #ddd; border-radius:4px; background:white; cursor:pointer; }
+  .serial-btns button:hover { background:#f0f0f0; }
+  #serial-log { background:#1a1a2e; color:#a8d8a8; padding:10px; border-radius:8px 8px 0 0; font-family:'Courier New',monospace; font-size:11px; height:200px; overflow-y:auto; line-height:1.6; }
+  #serial-log .entry { display:flex; gap:8px; border-bottom:1px solid #ffffff08; padding:1px 0; }
+  #serial-log .entry:last-child { border-bottom:none; }
+  #serial-log .ts { color:#556; flex-shrink:0; user-select:none; }
+  #serial-log .dir-tx { color:#64b5f6; flex-shrink:0; }
+  #serial-log .dir-rx { color:#81c784; flex-shrink:0; }
+  #serial-log .dir-sys { color:#ffb74d; flex-shrink:0; }
+  #serial-log .dir-err { color:#e57373; flex-shrink:0; }
+  #serial-log .txt-tx { color:#bbdefb; }
+  #serial-log .txt-rx { color:#c8e6c9; }
+  #serial-log .txt-sys { color:#ffe0b2; }
+  #serial-log .txt-err { color:#ffcdd2; }
+  .serial-count { font-size:10px; color:#999; }
+  .serial-input-row { display:flex; }
+  .serial-input-row input { flex:1; background:#12122a; color:#e0e0e0; border:none; border-radius:0 0 0 8px; padding:7px 10px; font-family:'Courier New',monospace; font-size:12px; outline:none; }
+  .serial-input-row input::placeholder { color:#445; }
+  .serial-input-row button { background:#2196F3; color:white; border:none; border-radius:0 0 8px 0; padding:7px 16px; font-size:12px; cursor:pointer; white-space:nowrap; }
+  .serial-input-row button:hover { background:#1976d2; }
+
+  /* 快捷鍵提示 */
+  .hotkey-hint { font-size:10px; color:#999; margin-top:8px; text-align:center; }
+
+  /* 資料庫選碼 */
+  .db-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+  .db-row select { flex:1; min-width:100px; padding:6px; border-radius:6px; border:1px solid #ddd; font-size:12px; }
+  .db-info { background:#f9f9f9; border-radius:8px; padding:10px; font-size:12px; color:#555; margin-bottom:8px; line-height:1.6; }
+  .db-info b { color:#1a237e; }
+  .db-info .warn { color:#e65100; }
+  .btn-assign { background:var(--primary); color:white; border:none; padding:8px 15px; border-radius:6px; cursor:pointer; font-weight:bold; width:100%; }
+  .btn-assign:disabled { background:#ccc; cursor:not-allowed; }
+  .db-hint { font-size:11px; color:#999; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<div class="nav-btns">
+  <button id="usbBtn" onclick="connectUSB()" style="background:#444;color:white;">🔌 USB</button>
+  <button id="bleBtn" onclick="connectBLE()" style="background:#6a1b9a;color:white;">📶 藍牙</button>
+  <button onclick="disconnect()" style="background:#f44336;color:white;">✕ 斷線</button>
+</div>
+
+<div class="hotkey-hint">⌨️ 快捷鍵：F1=USB連線 | F2=BLE連線 | Esc=斷線 | Ctrl+L=學習</div>
+
+<!-- 連線狀態 + 學習區 -->
+<div class="card">
+  <div class="status-bar">
+    <span><span class="conn-dot" id="conn-dot"></span><span id="conn-stat">狀態: 未連線</span></span>
+    <span id="time-stat"></span>
+  </div>
+  <div id="log">等待指令輸入...</div>
+  <div class="learn-zone">
+    群組: <select id="learn-group"></select>
+    位置: <select id="pos"></select>
+    名稱: <input type="text" id="btn-name" placeholder="名稱" style="width:55px;padding:5px;border-radius:4px;border:1px solid #ddd;">
+    <button id="learnBtn" class="btn-learn" onclick="startLearn()">開始學習</button>
+  </div>
+</div>
+
+<!-- 資料庫選碼 -->
+<div class="card">
+  <h3>📚 從資料庫選擇(IRDB)</h3>
+  <div class="db-row">
+    <select id="db-brand"><option value="">載入品牌中...</option></select>
+    <select id="db-type" disabled><option value="">先選品牌</option></select>
+  </div>
+  <div class="db-row">
+    <select id="db-device" disabled><option value="">先選類型</option></select>
+    <select id="db-func" disabled><option value="">先選裝置</option></select>
+  </div>
+  <div class="db-info" id="db-info">選好功能鍵後，這裡會顯示可指定的協定資訊。</div>
+  <button class="btn-assign" id="db-assign-btn" disabled onclick="assignFromDb()">指定到目前選擇的群組/位置</button>
+  <div class="db-hint">會指定到上方「群組/位置」欄位選的格子。冷氣(狀態型協定)資料庫目前無法自動換算，請改用學習功能。</div>
+</div>
+
+<!-- 遙控器面板 -->
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <h3 style="margin:0;">📱 遙控器面板</h3>
+    <button onclick="toggleEdit()" id="editBtn" style="border:1px solid #ccc;background:none;padding:4px 10px;border-radius:4px;font-size:12px;">排序模式</button>
+  </div>
+
+  <div class="group-bar" id="group-bar"></div>
+  <div class="group-actions">
+    <button onclick="renameGroup()">✏️ 重新命名</button>
+    <button onclick="deleteGroup()" style="color:#f44336;">🗑 刪除此群組</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="io-bar">
+    <button onclick="exportData()">📤 匯出設定</button>
+    <button onclick="importData()">📥 匯入設定</button>
+  </div>
+</div>
+
+<!-- Serial 日誌 -->
+<div class="card">
+  <div class="serial-header">
+    <h3>🖥️ Serial 日誌 <span class="serial-count" id="serial-count">0 / 100</span></h3>
+    <div class="serial-btns">
+      <button onclick="toggleSerialPause()" id="pauseBtn">⏸ 暫停</button>
+      <button onclick="copySerialLog(event)">📋 複製</button>
+      <button onclick="clearSerialLog()">🗑 清除</button>
+    </div>
+  </div>
+  <div id="serial-log"></div>
+  <div class="serial-input-row">
+    <input id="serial-input" placeholder="輸入指令，Enter 送出（例：LEARN_ON）"
+           onkeydown="if(event.key==='Enter') sendManualCmd()">
+    <button onclick="sendManualCmd()">送出</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  常數
+// ============================================================
+const STORAGE_NS     = "esp32hub_";
+const BTNS_PER_GROUP = 4;     // 2x2
+const MAX_GROUPS     = 10;
+
+// 狀態型(冷氣等)協定清單，需與韌體 protoFromString() 一致
+const STATE_PROTOCOLS = ["PANASONIC_AC","DAIKIN","DAIKIN2","MITSUBISHI_AC","GREE","COOLIX48","HITACHI_AC","FUJITSU_AC"];
+function isStateProtocol(proto) { return STATE_PROTOCOLS.includes((proto||'').toUpperCase()); }
+
+// IRDB (probonopd/irdb) 存取設定
+const IRDB_API   = "https://api.github.com/repos/probonopd/irdb/contents/codes";
+const IRDB_CDN   = "https://cdn.jsdelivr.net/gh/probonopd/irdb@master/codes";
+const IRDB_CACHE_MS = 7 * 24 * 60 * 60 * 1000; // 目錄清單快取7天，減少API呼叫
+
+// BLE UUIDs（與韌體一致）
+const BLE_SERVICE  = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+const BLE_CHAR     = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+
+// ============================================================
+//  狀態變數
+// ============================================================
+let port = null, writer = null;
+let isEdit = false;
+let usbReader = null;
+let usbReadBuffer = '';
+let currentGroup = 0;
+
+// BLE
+let bleDevice = null, bleChar = null;
+let bleReadBuffer = '';
+
+// READ_ALL 同步暫存區：CURR_GROUP開始蒐集，SYNC_DONE時一次寫回，避免畫面中途閃爍不完整
+let syncBuffer = null;
+
+// ============================================================
+//  群組資料存取
+// ============================================================
+function loadGroups() {
+  return JSON.parse(localStorage.getItem(STORAGE_NS + 'groups'))
+    || [{ gIdx: 0, name: '遙控器 1', order: Array.from({length: BTNS_PER_GROUP}, (_, i) => i + 1) }];
+}
+
+function saveGroups(groups) {
+  localStorage.setItem(STORAGE_NS + 'groups', JSON.stringify(groups));
+}
+
+function irKey(gIdx, pos) {
+  return STORAGE_NS + 'ir_g' + gIdx + '_b' + pos;
+}
+
+// ============================================================
+//  裝置端(NVS)同步：SAVE / SAVE_STATE / DELETE / SET_GROUP / GET_STATE
+//  這些指令會把資料寫進ESP32的Flash，實體按鍵喚醒時才讀得到
+// ============================================================
+async function writeToDevice(gIdx, pos, data) {
+  try {
+    if (data.isState) {
+      // ⚠️ 目前韌體(常駐輪詢版)尚未實作 SAVE_STATE，這裡送出後裝置會直接忽略，
+      // 狀態型協定(冷氣等)暫時只會存在網頁本機，無法透過實體按鍵發射。
+      await sendCmd(`SAVE_STATE,${gIdx},${pos - 1},${data.p},${data.h}`);
+    } else {
+      await sendCmd(`SAVE,${gIdx},${pos - 1},${data.p},${data.h},${data.b},${data.name}`);
+    }
+  } catch (e) {
+    appendSerial('err', '⚠️ 寫入裝置失敗(可能未連線)，此格只存在網頁本機：' + e.message);
+  }
+}
+
+async function deleteFromDevice(gIdx, pos) {
+  try {
+    await sendCmd(`DELETE,${gIdx},${pos - 1}`);
+  } catch (e) { /* 未連線就略過，本機資料仍會刪除 */ }
+}
+
+async function sendSetGroup(gIdx) {
+  try {
+    await sendCmd(`SET_GROUP,${gIdx}`);
+  } catch (e) { /* 未連線時略過，之後連線可再手動切一次 */ }
+}
+
+async function sendAddGroup(name) {
+  try {
+    await sendCmd(`ADD_GROUP,${name}`);
+  } catch (e) { /* 未連線時略過，此群組只存在本機，之後連線需手動再建一次 */ }
+}
+
+async function sendDeleteGroup(gIdx) {
+  try {
+    await sendCmd(`DELETE_GROUP,${gIdx}`);
+  } catch (e) { /* 未連線就略過 */ }
+}
+
+async function sendRenameGroup(gIdx, name) {
+  try {
+    await sendCmd(`RENAME_GROUP,${gIdx},${name}`);
+  } catch (e) { /* 未連線就略過 */ }
+}
+
+// 連線後跟裝置要一份完整資料(目前群組/所有群組名稱/所有按鍵資料+名稱)，裝置端資料視為最終依據
+async function requestReadAll() {
+  try {
+    await sendCmd('READ_ALL');
+  } catch (e) { /* ignore */ }
+}
+
+// ============================================================
+//  協定換算：目前僅支援 NEC 家族 與 Sony(SIRC)，
+//  邏輯移植自 IRremoteESP8266 的 IRsend::encodeNEC() / encodeSony()
+//  其他協定(RC5/RC6/Samsung/Panasonic/JVC...)因未逐一核對位元順序，
+//  暫不自動換算，避免產生錯誤碼卻難以察覺。
+// ============================================================
+function reverseBits(value, nbits) {
+  let v = BigInt(value), r = 0n;
+  for (let i = 0; i < nbits; i++) { r = (r << 1n) | (v & 1n); v >>= 1n; }
+  return r;
+}
+
+function encodeNEC(address, command) {
+  let addr = BigInt(address) & 0xFFFFn;
+  let cmd  = BigInt(command) & 0xFFn;
+  cmd = reverseBits(cmd, 8);
+  cmd = (cmd << 8n) + (cmd ^ 0xFFn);
+  if (addr > 0xFFn) {
+    addr = reverseBits(addr, 16);
+    return (addr << 16n) + cmd;               // Extended NEC
+  } else {
+    addr = reverseBits(addr, 8);
+    return (addr << 24n) + ((addr ^ 0xFFn) << 16n) + cmd;  // Normal NEC
+  }
+}
+
+function encodeSony(nbits, command, address, extended) {
+  let addr = BigInt(address), cmd = BigInt(command), ext = BigInt(extended || 0);
+  let result;
+  if (nbits === 12) result = addr & 0x1Fn;
+  else if (nbits === 15) result = addr & 0xFFn;
+  else if (nbits === 20) result = (addr & 0x1Fn) | ((ext & 0xFFn) << 5n);
+  else return null;
+  result = (result << 7n) | (cmd & 0x7Fn);
+  return reverseBits(result, nbits);
+}
+
+// 把IRDB的 protocol/device/subdevice/function 換算成韌體可用的 {proto,hex,bits}；換算不了回傳null
+function convertIrdbEntry(protocol, device, subdevice, func) {
+  const p = protocol.toUpperCase();
+  if (p.startsWith('NEC')) {
+    const addr = (subdevice >= 0) ? (device | (subdevice << 8)) : device;
+    const code = encodeNEC(addr, func);
+    return { proto: 'NEC', hex: '0x' + code.toString(16).toUpperCase(), bits: 32 };
+  }
+  const sonyMatch = p.match(/^SONY(12|15|20)$/);
+  if (sonyMatch) {
+    const nbits = parseInt(sonyMatch[1]);
+    const code = encodeSony(nbits, func, device, subdevice >= 0 ? subdevice : 0);
+    if (code === null) return null;
+    return { proto: 'SONY', hex: '0x' + code.toString(16).toUpperCase(), bits: nbits };
+  }
+  return null;
+}
+
+// ============================================================
+//  IRDB 瀏覽(品牌 → 裝置類型 → 檔案 → 功能鍵)
+// ============================================================
+function irdbCacheGet(key) {
+  try {
+    const raw = localStorage.getItem('irdb_cache_' + key);
+    if (!raw) return null;
+    const { t, data } = JSON.parse(raw);
+    if (Date.now() - t > IRDB_CACHE_MS) return null;
+    return data;
+  } catch (e) { return null; }
+}
+function irdbCacheSet(key, data) {
+  try { localStorage.setItem('irdb_cache_' + key, JSON.stringify({ t: Date.now(), data })); } catch (e) {}
+}
+
+async function irdbListDir(path) {
+  const cached = irdbCacheGet(path);
+  if (cached) return cached;
+  const res = await fetch(IRDB_API + (path ? '/' + path : ''));
+  if (!res.ok) throw new Error('IRDB API錯誤 ' + res.status);
+  const json = await res.json();
+  const list = json.map(item => ({ name: item.name, type: item.type }));
+  irdbCacheSet(path, list);
+  return list;
+}
+
+function fillSelect(sel, items, placeholder) {
+  sel.innerHTML = '';
+  sel.add(new Option(placeholder, ''));
+  items.forEach(it => sel.add(new Option(it.label, it.value)));
+  sel.disabled = items.length === 0;
+}
+
+async function initDbBrandList() {
+  const brandSel = document.getElementById('db-brand');
+  try {
+    const dirs = await irdbListDir('');
+    const brands = dirs.filter(d => d.type === 'dir').map(d => ({ label: d.name, value: d.name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    fillSelect(brandSel, brands, '選擇品牌');
+    brandSel.disabled = false;
+  } catch (e) {
+    brandSel.innerHTML = '<option value="">載入失敗，稍後重試</option>';
+    appendSerial('err', 'IRDB品牌清單載入失敗: ' + e.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // 品牌清單延遲到頁面載入後才抓，避免拖慢首次連線
+  setTimeout(initDbBrandList, 800);
+
+  document.getElementById('db-brand').addEventListener('change', async (e) => {
+    const brand = e.target.value;
+    const typeSel = document.getElementById('db-type');
+    const devSel  = document.getElementById('db-device');
+    const funcSel = document.getElementById('db-func');
+    fillSelect(devSel, [], '先選類型'); fillSelect(funcSel, [], '先選裝置');
+    document.getElementById('db-assign-btn').disabled = true;
+    if (!brand) { fillSelect(typeSel, [], '先選品牌'); return; }
+    typeSel.innerHTML = '<option value="">載入中...</option>';
+    try {
+      const dirs = await irdbListDir(brand);
+      const types = dirs.filter(d => d.type === 'dir').map(d => ({ label: d.name, value: d.name }));
+      fillSelect(typeSel, types, '選擇裝置類型');
+    } catch (e) {
+      typeSel.innerHTML = '<option value="">載入失敗</option>';
+    }
+  });
+
+  document.getElementById('db-type').addEventListener('change', async (e) => {
+    const brand = document.getElementById('db-brand').value;
+    const type  = e.target.value;
+    const devSel  = document.getElementById('db-device');
+    const funcSel = document.getElementById('db-func');
+    fillSelect(funcSel, [], '先選裝置');
+    document.getElementById('db-assign-btn').disabled = true;
+    if (!type) { fillSelect(devSel, [], '先選類型'); return; }
+    devSel.innerHTML = '<option value="">載入中...</option>';
+    try {
+      const files = await irdbListDir(brand + '/' + type);
+      const items = files.filter(f => f.type === 'file' && f.name.endsWith('.csv'))
+        .map(f => ({ label: f.name.replace('.csv', '').replace(',', ' / '), value: f.name }));
+      fillSelect(devSel, items, '選擇裝置(device/subdevice)');
+    } catch (e) {
+      devSel.innerHTML = '<option value="">載入失敗</option>';
+    }
+  });
+
+  document.getElementById('db-device').addEventListener('change', async (e) => {
+    const brand = document.getElementById('db-brand').value;
+    const type  = document.getElementById('db-type').value;
+    const file  = e.target.value;
+    const funcSel = document.getElementById('db-func');
+    document.getElementById('db-assign-btn').disabled = true;
+    document.getElementById('db-info').innerHTML = '選好功能鍵後，這裡會顯示可指定的協定資訊。';
+    if (!file) { fillSelect(funcSel, [], '先選裝置'); return; }
+    funcSel.innerHTML = '<option value="">載入中...</option>';
+    try {
+      const url = `${IRDB_CDN}/${encodeURIComponent(brand)}/${encodeURIComponent(type)}/${encodeURIComponent(file)}`;
+      const res = await fetch(url);
+      const text = await res.text();
+      const rows = text.trim().split('\n').slice(1); // 跳過header
+      const items = rows.map(line => {
+        const cols = line.split(',');
+        return { label: cols[0], value: JSON.stringify({ p: cols[1], d: parseInt(cols[2]), s: parseInt(cols[3]), f: parseInt(cols[4]) }) };
+      });
+      fillSelect(funcSel, items, '選擇功能鍵');
+    } catch (e) {
+      funcSel.innerHTML = '<option value="">載入失敗</option>';
+      appendSerial('err', 'IRDB檔案載入失敗: ' + e.message);
+    }
+  });
+
+  document.getElementById('db-func').addEventListener('change', (e) => {
+    const infoBox = document.getElementById('db-info');
+    const assignBtn = document.getElementById('db-assign-btn');
+    if (!e.target.value) { infoBox.innerHTML = '選好功能鍵後，這裡會顯示可指定的協定資訊。'; assignBtn.disabled = true; return; }
+    const entry = JSON.parse(e.target.value);
+    const converted = convertIrdbEntry(entry.p, entry.d, entry.s, entry.f);
+    if (converted) {
+      infoBox.innerHTML = `原始協定: <b>${entry.p}</b>　device=${entry.d} subdevice=${entry.s} function=${entry.f}<br>
+        換算結果: <b>${converted.proto}</b>　hex=<b>${converted.hex}</b>　bits=<b>${converted.bits}</b>`;
+      assignBtn.disabled = false;
+      assignBtn.dataset.converted = JSON.stringify(converted);
+    } else {
+      infoBox.innerHTML = `原始協定: <b>${entry.p}</b>　device=${entry.d} subdevice=${entry.s} function=${entry.f}<br>
+        <span class="warn">⚠️ 此協定目前網頁還無法自動換算，請改用「開始學習」對著原廠遙控器學習。</span>`;
+      assignBtn.disabled = true;
+    }
+  });
+});
+
+async function assignFromDb() {
+  const btn = document.getElementById('db-assign-btn');
+  const converted = JSON.parse(btn.dataset.converted || 'null');
+  if (!converted) return;
+
+  const gIdx = parseInt(document.getElementById('learn-group').value);
+  const pos  = parseInt(document.getElementById('pos').value);
+  const name = document.getElementById('btn-name').value ||
+    document.getElementById('db-func').selectedOptions[0].textContent;
+
+  const data = { name, p: converted.proto, isState: 0, h: converted.hex, b: converted.bits };
+  localStorage.setItem(irKey(gIdx, pos), JSON.stringify(data));
+  await writeToDevice(gIdx, pos, data);
+  if (gIdx === currentGroup) renderGrid();
+  appendSerial('sys', `📚 已從資料庫指定「${name}」到 群組${gIdx + 1}/位置${pos}`);
+}
+
+// ============================================================
+//  初始化 + 自動連線
+// ============================================================
+window.onload = () => {
+  renderGroupBar();
+  renderGrid();
+  updateLearnSelects();
+  
+  // 檢查首次使用提示
+  if (!localStorage.getItem(STORAGE_NS + 'usb_tip_shown')) {
+    const tip = document.createElement('div');
+    tip.style.cssText = 'background:#fff3cd;padding:12px;margin-bottom:15px;border-radius:8px;border-left:4px solid #ffc107;';
+    tip.innerHTML = `
+      <b>💡 首次使用提示</b><br>
+      請點擊「🔌 USB」選擇您的 ESP32 裝置，Chrome 會記住此選擇，下次將自動連線！
+      <button onclick="this.parentElement.remove();localStorage.setItem('${STORAGE_NS}usb_tip_shown','1')" 
+              style="float:right;border:none;background:#ffc107;color:white;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:bold;">
+        知道了
+      </button>
+    `;
+    document.body.insertBefore(tip, document.body.firstChild);
+  }
+  
+  // 500ms 後嘗試自動連線
+  setTimeout(autoConnectUSB, 500);
+  
+  // 快捷鍵支援
+  document.addEventListener('keydown', handleHotkeys);
+  
+  // 顯示時間
+  setInterval(updateTime, 1000);
+  updateTime();
+};
+
+// ============================================================
+//  自動連線 USB
+// ============================================================
+async function autoConnectUSB() {
+  try {
+    const ports = await navigator.serial.getPorts();
+    if (ports.length === 0) {
+      appendSerial('sys', '💡 首次使用請點擊「🔌 USB」選擇裝置');
+      return;
+    }
+    
+    port = ports[0];
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    setConnStatus("USB 已連線（自動）", true);
+    document.getElementById('usbBtn').style.background = '#1565c0';
+    appendSerial('sys', '✅ USB 自動連線成功');
+    readUSB();
+    setTimeout(requestReadAll, 300);
+    
+  } catch(e) {
+    const msg = e.message;
+    if (msg.includes('already open')) {
+      appendSerial('sys', '⚠️ 裝置被其他程式占用，請關閉 Serial Monitor');
+    } else if (msg.includes('not found')) {
+      appendSerial('sys', '⚠️ 未偵測到裝置，請插上 ESP32');
+    } else {
+      appendSerial('sys', '⚠️ 自動連線失敗：' + msg);
+    }
+    appendSerial('sys', '💡 請手動點擊「🔌 USB」按鈕');
+  }
+}
+
+// ============================================================
+//  快捷鍵
+// ============================================================
+function handleHotkeys(e) {
+  // F1 = 連線 USB
+  if (e.key === 'F1') {
+    e.preventDefault();
+    if (!port) connectUSB();
+  }
+  
+  // F2 = 連線 BLE
+  if (e.key === 'F2') {
+    e.preventDefault();
+    if (!bleDevice) connectBLE();
+  }
+  
+  // Esc = 斷線
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    disconnect();
+  }
+  
+  // Ctrl+L = 開始學習
+  if (e.ctrlKey && e.key === 'l') {
+    e.preventDefault();
+    startLearn();
+  }
+}
+
+// ============================================================
+//  時間顯示
+// ============================================================
+function updateTime() {
+  const now = new Date();
+  document.getElementById('time-stat').innerText = 
+    now.toLocaleTimeString('zh-TW', { hour12: false });
+}
+
+// ============================================================
+//  群組 Tab 列
+// ============================================================
+function renderGroupBar() {
+  const groups = loadGroups();
+  const bar = document.getElementById('group-bar');
+  bar.innerHTML = '';
+  groups.forEach(g => {
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (g.gIdx === currentGroup ? ' active' : '');
+    btn.textContent = g.name;
+    btn.onclick = () => { currentGroup = g.gIdx; renderGroupBar(); renderGrid(); syncLearnGroupSelect(); sendSetGroup(g.gIdx); };
+    bar.appendChild(btn);
+  });
+  const addBtn = document.createElement('button');
+  addBtn.className = 'tab-add';
+  addBtn.textContent = '＋ 新增';
+  addBtn.onclick = addGroup;
+  bar.appendChild(addBtn);
+}
+
+// 找出尚未使用的群組編號(0~9)，邏輯比照韌體 doAddGroup() 的「掃描第一個空位」
+function findFreeGroupIdx(groups) {
+  const used = new Set(groups.map(g => g.gIdx));
+  for (let i = 0; i < MAX_GROUPS; i++) if (!used.has(i)) return i;
+  return -1;
+}
+
+function addGroup() {
+  const groups = loadGroups();
+  if (groups.length >= MAX_GROUPS) { alert(`最多只能建立 ${MAX_GROUPS} 組`); return; }
+  const newIdx = findFreeGroupIdx(groups);
+  if (newIdx < 0) { alert(`最多只能建立 ${MAX_GROUPS} 組`); return; }
+  const name = prompt('新群組名稱：', '遙控器 ' + (groups.length + 1));
+  if (!name) return;
+  groups.push({ gIdx: newIdx, name, order: Array.from({length: BTNS_PER_GROUP}, (_, i) => i + 1) });
+  saveGroups(groups);
+  currentGroup = newIdx;
+  renderGroupBar();
+  renderGrid();
+  updateLearnSelects();
+  sendAddGroup(name);
+}
+
+function renameGroup() {
+  const groups = loadGroups();
+  const g = groups.find(g => g.gIdx === currentGroup);
+  if (!g) return;
+  const name = prompt('新名稱：', g.name);
+  if (!name) return;
+  g.name = name;
+  saveGroups(groups);
+  renderGroupBar();
+  updateLearnSelects();
+  sendRenameGroup(currentGroup, name);
+}
+
+function deleteGroup() {
+  const groups = loadGroups();
+  if (groups.length === 1) { alert('至少需要保留一個群組'); return; }
+  const g = groups.find(g => g.gIdx === currentGroup);
+  if (!g) return;
+  if (!confirm(`確定刪除「${g.name}」及其所有按鈕？`)) return;
+
+  g.order.forEach(pos => localStorage.removeItem(irKey(currentGroup, pos)));
+  const remaining = groups.filter(x => x.gIdx !== currentGroup);
+  saveGroups(remaining);
+  sendDeleteGroup(currentGroup);
+
+  // 群組編號不重排(比照韌體的稀疏索引方式)，只是切回清單中第一個剩餘群組
+  currentGroup = remaining[0].gIdx;
+  renderGroupBar();
+  renderGrid();
+  updateLearnSelects();
+}
+
+function updateLearnSelects() {
+  const groups = loadGroups();
+  const gSel = document.getElementById('learn-group');
+  gSel.innerHTML = '';
+  groups.forEach(g => gSel.add(new Option(g.name, g.gIdx)));
+  gSel.value = currentGroup;
+  gSel.onchange = () => {
+    currentGroup = parseInt(gSel.value);
+    renderGroupBar();
+    renderGrid();
+    sendSetGroup(currentGroup);
+  };
+
+  const pSel = document.getElementById('pos');
+  if (pSel.options.length === 0) {
+    for (let i = 1; i <= BTNS_PER_GROUP; i++) pSel.add(new Option('位置 ' + i, i));
+  }
+}
+
+function syncLearnGroupSelect() {
+  document.getElementById('learn-group').value = currentGroup;
+}
+
+// ============================================================
+//  連線狀態
+// ============================================================
+function setConnStatus(label, on) {
+  document.getElementById('conn-stat').innerText = "狀態: " + label;
+  document.getElementById('conn-dot').className  = 'conn-dot' + (on ? ' on' : '');
+}
+
+// ============================================================
+//  USB 連線（改進版，避免重複連線）
+// ============================================================
+async function connectUSB() {
+  // 如果已經連線，直接返回
+  if (port && writer) {
+    appendSerial('sys', '⚠️ USB 已連線，無需重複操作');
+    return;
+  }
+  
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    setConnStatus("USB 已連線", true);
+    document.getElementById('usbBtn').style.background = '#1565c0';
+    appendSerial('sys', '✅ USB 連線成功');
+    readUSB();
+    setTimeout(requestReadAll, 300);
+  } catch(e) { 
+    if (!e.message.includes('No port selected')) {
+      updateLog("USB 連線失敗: " + e); 
+    }
+  }
+}
+
+async function readUSB() {
+  const decoder = new TextDecoder();
+  usbReadBuffer = '';
+  while (port && port.readable) {
+    if (usbReader) { try { usbReader.releaseLock(); } catch(e){} }
+    usbReader = port.readable.getReader();
+    try {
+      while (true) {
+        const { value, done } = await usbReader.read();
+        if (done) break;
+        usbReadBuffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = usbReadBuffer.indexOf('\n')) !== -1) {
+          const line = usbReadBuffer.slice(0, nl).trim();
+          usbReadBuffer = usbReadBuffer.slice(nl + 1);
+          if (line) handleIncoming(line);
+        }
+      }
+    } catch(e) {
+      updateLog("USB 讀取錯誤: " + e);
+    } finally {
+      try { usbReader.releaseLock(); } catch(e){}
+      usbReader = null;
+    }
+  }
+}
+
+// ============================================================
+//  BLE 連線
+// ============================================================
+async function connectBLE() {
+  try {
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'ESP32-IR-Hub' }],
+      optionalServices: [BLE_SERVICE]
+    });
+    bleDevice.addEventListener('gattserverdisconnected', onBLEDisconnect);
+    const server  = await bleDevice.gatt.connect();
+    const service = await server.getPrimaryService(BLE_SERVICE);
+    bleChar       = await service.getCharacteristic(BLE_CHAR);
+    await bleChar.startNotifications();
+    bleChar.addEventListener('characteristicvaluechanged', onBLENotify);
+    bleReadBuffer = '';
+    setConnStatus("藍牙已連線", true);
+    document.getElementById('bleBtn').style.background = '#4a0072';
+    appendSerial('sys', '📶 BLE 已連線：' + bleDevice.name);
+    setTimeout(requestReadAll, 300);
+  } catch(e) {
+    if (!e.message.includes('cancelled')) updateLog("BLE 連線失敗: " + e);
+  }
+}
+
+function onBLENotify(e) {
+  bleReadBuffer += new TextDecoder().decode(e.target.value);
+  let nl;
+  while ((nl = bleReadBuffer.indexOf('\n')) !== -1) {
+    const line = bleReadBuffer.slice(0, nl).trim();
+    bleReadBuffer = bleReadBuffer.slice(nl + 1);
+    if (line) handleIncoming(line);
+  }
+  if (bleReadBuffer.length > 512) bleReadBuffer = '';
+}
+
+function onBLEDisconnect() {
+  bleChar = null;
+  appendSerial('sys', '📶 BLE 已斷線');
+  setConnStatus("已斷線", false);
+  document.getElementById('bleBtn').style.background = '#6a1b9a';
+}
+
+// ============================================================
+//  斷線
+// ============================================================
+async function disconnect() {
+  // USB
+  if (writer)    { try { await writer.close(); }   catch(e){} writer = null; }
+  if (usbReader) { try { usbReader.cancel(); }     catch(e){} usbReader = null; }
+  if (port)      { try { await port.close(); }     catch(e){} port = null; }
+  usbReadBuffer = '';
+  document.getElementById('usbBtn').style.background = '#444';
+  // BLE
+  if (bleDevice && bleDevice.gatt.connected) { try { bleDevice.gatt.disconnect(); } catch(e){} }
+  bleDevice = null; bleChar = null; bleReadBuffer = '';
+  document.getElementById('bleBtn').style.background = '#6a1b9a';
+  setConnStatus("已斷線", false);
+  appendSerial('sys', '🔌 已手動斷線');
+}
+
+// ============================================================
+//  發送指令
+// ============================================================
+async function sendCmd(cmd) {
+  const hasUSB = !!writer;
+  const hasBLE = !!(bleChar && bleDevice && bleDevice.gatt.connected);
+
+  if (!hasUSB && !hasBLE) {
+    updateLog("⚠️ 未連線，請先點擊連線按鈕");
+    setConnStatus("未連線", false);
+    ['usbBtn','bleBtn'].forEach(id => {
+      const b = document.getElementById(id);
+      b.classList.add('flash-warn');
+      setTimeout(() => b.classList.remove('flash-warn'), 400);
+    });
+    throw new Error("未連線");
+  }
+
+  updateLog("發送: " + cmd);
+  const encoded = new TextEncoder().encode(cmd + "\n");
+
+  try {
+    if (hasUSB) await writer.write(encoded);
+    if (hasBLE) {
+      for (let i = 0; i < encoded.length; i += 100) {
+        await bleChar.writeValueWithoutResponse(encoded.slice(i, i + 100));
+      }
+    }
+  } catch(e) {
+    updateLog("發送失敗: " + e);
+    throw e;
+  }
+}
+
+// ============================================================
+//  收到資料處理
+// ============================================================
+function handleIncoming(text) {
+  updateLog("收到: " + text);
+
+  if (text.startsWith("RECV,")) {
+    const parts = text.split(',');
+    if (parts.length >= 4) {
+      const gIdx = parseInt(document.getElementById('learn-group').value);
+      const pos  = parseInt(document.getElementById('pos').value);
+      const name = document.getElementById('btn-name').value || ("按鈕 " + pos);
+      const proto = parts[1].trim();
+      const bits  = parts[parts.length - 1].trim();
+      const hex   = parts.slice(2, parts.length - 1).join(',').trim();
+      const stateProto = isStateProtocol(proto);
+      const data = { name, p: proto, isState: stateProto ? 1 : 0, h: hex, b: bits };
+      localStorage.setItem(irKey(gIdx, pos), JSON.stringify(data));
+      writeToDevice(gIdx, pos, data);   // 同步寫入裝置NVS，實體按鍵才發得出來
+      const btn = document.getElementById('learnBtn');
+      btn.innerText = "✅ 學習成功！";
+      btn.style.background = "#4caf50";
+      setTimeout(() => { btn.innerText = "開始學習"; btn.style.background = ""; }, 2000);
+      if (gIdx === currentGroup) renderGrid();
+    }
+    return;
+  }
+  // ── READ_ALL 同步：CURR_GROUP 開始一輪同步，SYNC_DONE 時一次性覆蓋本機資料 ──
+  if (text.startsWith("CURR_GROUP,")) {
+    syncBuffer = { curGroup: parseInt(text.split(',')[1]) || 0, groups: [], buttons: {} };
+    return;
+  }
+  if (text.startsWith("GROUP,") && syncBuffer) {
+    const parts = text.split(',');
+    const gIdx  = parseInt(parts[1]);
+    const name  = parts.slice(2).join(',') || ('遙控器 ' + (gIdx + 1));
+    syncBuffer.groups.push({ gIdx, name, order: Array.from({length: BTNS_PER_GROUP}, (_, i) => i + 1) });
+    return;
+  }
+  if (text.startsWith("SYNC,") && syncBuffer) {
+    // SYNC,group,pos(0-based),proto,hex,bits,name
+    const parts = text.split(',');
+    if (parts.length >= 6) {
+      const gIdx  = parseInt(parts[1]);
+      const pos   = parseInt(parts[2]) + 1;  // 韌體0-based，網頁UI用1-based
+      const proto = parts[3];
+      const hex   = parts[4];
+      const bits  = parts[5];
+      const name  = parts.length >= 7 ? parts.slice(6).join(',') : ('按鍵' + pos);
+      syncBuffer.buttons[irKey(gIdx, pos)] =
+        { name, p: proto, isState: isStateProtocol(proto) ? 1 : 0, h: hex, b: bits };
+    }
+    return;
+  }
+  if (text === "SYNC_DONE") {
+    if (syncBuffer) {
+      if (syncBuffer.groups.length === 0) {
+        syncBuffer.groups.push({ gIdx: 0, name: '遙控器 1', order: Array.from({length: BTNS_PER_GROUP}, (_, i) => i + 1) });
+      }
+      Object.keys(localStorage).filter(k => k.startsWith(STORAGE_NS + 'ir_')).forEach(k => localStorage.removeItem(k));
+      saveGroups(syncBuffer.groups);
+      Object.entries(syncBuffer.buttons).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
+      currentGroup = syncBuffer.groups.some(g => g.gIdx === syncBuffer.curGroup)
+        ? syncBuffer.curGroup : syncBuffer.groups[0].gIdx;
+      renderGroupBar();
+      renderGrid();
+      updateLearnSelects();
+      appendSerial('sys', `📡 已從裝置同步：${syncBuffer.groups.length} 組資料`);
+      syncBuffer = null;
+    }
+    return;
+  }
+  if (text.startsWith("ERR,GROUP_FULL")) {
+    alert('裝置端群組已滿(10組)，新增失敗。建議重新整理頁面，讓網頁重新從裝置同步最新狀態。');
+    return;
+  }
+  if (text.startsWith("OK,SAVED") || text.startsWith("OK,DELETED") || text.startsWith("OK,GROUP_SET") ||
+      text.startsWith("OK,GROUP_ADDED") || text.startsWith("OK,GROUP_DELETED") || text.startsWith("OK,GROUP_RENAMED")) {
+    return;  // 純確認訊息，log已經在sendCmd顯示過發送內容，這裡不用額外處理
+  }
+  if (text === "NOTIFY,LEARNING_START") {
+    const btn = document.getElementById('learnBtn');
+    btn.innerText = "⏳ 等待訊號...";
+    btn.style.background = "#ff9800";
+    return;
+  }
+  if (text === "OK,IR_SENT") {
+    updateLog("✅ IR 已發射");
+    return;
+  }
+  if (text === "NOTIFY,LEARN_TIMEOUT") {
+    const btn = document.getElementById('learnBtn');
+    btn.innerText = "⚠️ 超時，重試";
+    btn.style.background = "#ff9800";
+    setTimeout(() => { btn.innerText = "開始學習"; btn.style.background = ""; }, 2000);
+    return;
+  }
+  if (text.startsWith("ERR,")) {
+    const btn = document.getElementById('learnBtn');
+    if (btn.innerText.includes('等待')) { btn.innerText = "開始學習"; btn.style.background = ""; }
+    return;
+  }
+}
+
+// ============================================================
+//  IR 學習
+// ============================================================
+async function startLearn() {
+  const btn = document.getElementById('learnBtn');
+  btn.innerText = "⏳ 等待訊號...";
+  btn.style.background = "#ff9800";
+  try {
+    await sendCmd("LEARN_ON");
+  } catch(e) {
+    btn.innerText = "開始學習";
+    btn.style.background = "";
+  }
+}
+
+// ============================================================
+//  遙控器格線
+// ============================================================
+function renderGrid() {
+  const groups = loadGroups();
+  const g      = groups.find(g => g.gIdx === currentGroup) || groups[0];
+  const order  = g.order;
+  const grid   = document.getElementById('grid');
+  grid.innerHTML = '';
+  order.forEach(pos => {
+    const data = JSON.parse(localStorage.getItem(irKey(currentGroup, pos)));
+    const div  = document.createElement('div');
+    div.className = 'btn-ir' + (data ? ' has-data' : '');
+    div.draggable = isEdit;
+    
+    // 如果在編輯模式且有資料，顯示小鉛筆圖示提示可更名
+    const nameText = data ? (data.isState ? '❄ ' + data.name : data.name) : '未設定';
+    const displayLabel = (isEdit && data) ? nameText + ' ✏️' : nameText;
+
+    div.innerHTML = `<small>Pos ${pos}</small><b>${displayLabel}</b>
+                     <button class="btn-del" onclick="deleteIR(event,${pos})">✕</button>`;
+    
+    div.onclick = async () => {
+      if (isEdit) {
+        // 排序模式：如果有資料，觸發更名
+        if (data) renameIR(pos, data);
+      } else {
+        // 一般模式：發射訊號
+        if (data) {
+          if (data.isState) {
+            alert('這是狀態型協定(如冷氣)，目前韌體只支援存到裝置後由實體按鍵發射，網頁尚不支援即時測試發射。');
+          } else {
+            await sendCmd(`SEND,${data.p},${data.h},${data.b}`);
+          }
+        }
+      }
+    };
+    
+    div.ondragstart = (e) => e.dataTransfer.setData('text/plain', pos);
+    div.ondragover  = (e) => e.preventDefault();
+    div.ondrop      = (e) => { e.preventDefault(); reorder(parseInt(e.dataTransfer.getData('text/plain')), pos); };
+    grid.appendChild(div);
+  });
+}
+
+function renameIR(pos, oldData) {
+  const newName = prompt(`請輸入位置 ${pos} 的新名稱：`, oldData.name);
+  if (newName === null) return; // 使用者按取消
+  
+  const finalName = newName.trim() || `按鈕 ${pos}`;
+  const newData = { ...oldData, name: finalName };
+  
+  localStorage.setItem(irKey(currentGroup, pos), JSON.stringify(newData));
+  writeToDevice(currentGroup, pos, newData);  // 同步寫回裝置NVS，名稱才會真的存住
+  renderGrid(); // 立即刷新面板顯示新名稱
+  appendSerial('sys', `✏️ 位置 ${pos} 已更名為: ${finalName}`);
+}
+
+function deleteIR(e, pos) {
+  e.stopPropagation();
+  if (confirm(`確定要清除位置 ${pos} 的資料嗎？`)) {
+    localStorage.removeItem(irKey(currentGroup, pos));
+    deleteFromDevice(currentGroup, pos);
+    renderGrid();
+  }
+}
+
+function reorder(s, t) {
+  const groups = loadGroups();
+  const g      = groups.find(g => g.gIdx === currentGroup);
+  if (!g) return;
+  const order  = g.order;
+  const sI = order.indexOf(s), tI = order.indexOf(t);
+  if (sI < 0 || tI < 0) return;
+  order.splice(sI, 1); order.splice(tI, 0, s);
+  saveGroups(groups);
+  renderGrid();
+}
+
+function toggleEdit() {
+  isEdit = !isEdit;
+  document.getElementById('editBtn').innerText = isEdit ? "完成排序" : "排序模式";
+  document.body.classList.toggle('edit-mode', isEdit);
+  renderGrid();
+}
+
+// ============================================================
+//  匯出 / 匯入
+// ============================================================
+function exportData() {
+  const groups = loadGroups();
+  const buttons = {};
+  groups.forEach(g => {
+    g.order.forEach(pos => {
+      const v = localStorage.getItem(irKey(g.gIdx, pos));
+      if (v) buttons['g' + g.gIdx + '_b' + pos] = JSON.parse(v);
+    });
+  });
+  const blob = new Blob([JSON.stringify({ groups, buttons }, null, 2)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: 'ir_hub_' + new Date().toISOString().slice(0,10) + '.json'
+  });
+  a.click();
+  URL.revokeObjectURL(a.href);
+  appendSerial('sys', '📤 設定已匯出');
+}
+
+function importData() {
+  const input = Object.assign(document.createElement('input'), { type:'file', accept:'.json,application/json' });
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.groups || !Array.isArray(data.groups) || !data.buttons) throw new Error('格式不符');
+        if (!confirm(`匯入將覆蓋現有設定，共 ${data.groups.length} 個群組，確定繼續？`)) return;
+        Object.keys(localStorage).filter(k => k.startsWith(STORAGE_NS)).forEach(k => localStorage.removeItem(k));
+        // 相容舊版匯出檔(沒有gIdx欄位)：用陣列位置補上
+        const normalizedGroups = data.groups.map((g, i) => ({
+          gIdx: (typeof g.gIdx === 'number') ? g.gIdx : i,
+          name: g.name,
+          order: g.order
+        }));
+        saveGroups(normalizedGroups);
+        Object.entries(data.buttons).forEach(([k, v]) => {
+          const m = k.match(/^g(\d+)_b(\d+)$/);
+          if (m) localStorage.setItem(irKey(parseInt(m[1]), parseInt(m[2])), JSON.stringify(v));
+        });
+        currentGroup = normalizedGroups[0].gIdx;
+        renderGroupBar();
+        renderGrid();
+        updateLearnSelects();
+        appendSerial('sys', '📥 匯入成功，共 ' + data.groups.length + ' 個群組（僅存於網頁本機，尚未寫回裝置，如需實體按鍵可用請逐一開啟每顆按鍵重新指定一次）');
+      } catch(err) {
+        alert('匯入失敗：' + err.message);
+        appendSerial('err', '匯入失敗: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ============================================================
+//  單行狀態 Log
+// ============================================================
+function updateLog(msg) {
+  const log = document.getElementById('log');
+  log.innerText = msg;
+  log.scrollTop = log.scrollHeight;
+  const dir = msg.startsWith('發送:') ? 'tx'
+            : msg.startsWith('收到:') ? 'rx'
+            : msg.startsWith('⚠️') || msg.includes('失敗') || msg.includes('錯誤') ? 'err'
+            : 'sys';
+  appendSerial(dir, msg);
+}
+
+// ============================================================
+//  Serial 日誌
+// ============================================================
+const MAX_SERIAL = 100;
+let serialLog    = [];
+let serialPaused = false;
+
+function appendSerial(dir, msg) {
+  const now = new Date();
+  const ts  = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  serialLog.push({ ts, dir, msg });
+  if (serialLog.length > MAX_SERIAL) {
+    serialLog.shift();
+    if (!serialPaused) {
+      const container = document.getElementById('serial-log');
+      if (container.firstChild) container.removeChild(container.firstChild);
+    }
+  }
+  if (!serialPaused) appendSerialDOM({ ts, dir, msg });
+}
+
+function appendSerialDOM(e) {
+  const container = document.getElementById('serial-log');
+  const atBottom  = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+  const label     = { tx:'→TX', rx:'←RX', sys:'SYS', err:'ERR' };
+  const div = document.createElement('div');
+  div.className = 'entry';
+  div.innerHTML = `<span class="ts">${e.ts}</span><span class="dir-${e.dir}">${label[e.dir]}</span><span class="txt-${e.dir}">${escHtml(e.msg)}</span>`;
+  container.appendChild(div);
+  document.getElementById('serial-count').innerText = serialLog.length + ' / ' + MAX_SERIAL;
+  if (atBottom) container.scrollTop = container.scrollHeight;
+}
+
+function renderSerialLog() {
+  const container = document.getElementById('serial-log');
+  const atBottom  = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+  const label     = { tx:'→TX', rx:'←RX', sys:'SYS', err:'ERR' };
+  container.innerHTML = serialLog.map(e =>
+    `<div class="entry"><span class="ts">${e.ts}</span><span class="dir-${e.dir}">${label[e.dir]}</span><span class="txt-${e.dir}">${escHtml(e.msg)}</span></div>`
+  ).join('');
+  document.getElementById('serial-count').innerText = serialLog.length + ' / ' + MAX_SERIAL;
+  if (atBottom) container.scrollTop = container.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toggleSerialPause() {
+  serialPaused = !serialPaused;
+  document.getElementById('pauseBtn').innerText = serialPaused ? '▶ 繼續' : '⏸ 暫停';
+  if (!serialPaused) renderSerialLog();
+}
+
+function clearSerialLog() {
+  serialLog = [];
+  document.getElementById('serial-log').innerHTML = '';
+  document.getElementById('serial-count').innerText = '0 / ' + MAX_SERIAL;
+}
+
+function copySerialLog(e) {
+  const label = { tx:'→TX', rx:'←RX', sys:'SYS', err:'ERR' };
+  const text  = serialLog.map(entry => `[${entry.ts}] ${label[entry.dir]} ${entry.msg}`).join('\n');
+  const btn   = e.target;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.innerText = '✅ 已複製';
+    setTimeout(() => { btn.innerText = '📋 複製'; }, 1500);
+  }).catch(() => { prompt('複製以下內容：', text); });
+}
+
+// ============================================================
+//  Serial 手動輸入
+// ============================================================
+async function sendManualCmd() {
+  const input = document.getElementById('serial-input');
+  const cmd   = input.value.trim();
+  if (!cmd) return;
+  input.value = '';
+  await sendCmd(cmd);
+}
+</script>
+</body>
+</html>
