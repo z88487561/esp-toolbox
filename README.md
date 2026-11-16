@@ -6,8 +6,8 @@
 
 ## 新增工具
 1. 在 `js/tools/` 新增模組，預設匯出：
-   `{id, cat, icon, name, sub, tags:[], guide:[{h:'標題',li:['說明…']}], mount(root){ …; return cleanup }}`
-2. 在 `js/registry.js` import 並加進陣列。`cat` 要是 `js/app.js` 裡 `CATS` 的其中一個（可自行增加）。
+   `{id, icon, name, sub, tags:[], guide:[{h:'標題',li:['說明…']}], mount(root){ …; return cleanup }}`
+2. 在 `js/registry.js` import 並加進陣列。陣列順序即預設顯示順序，使用者可在首頁「自訂排序」調整，也可用每個工具右上角的 ☀️/🌙 切換亮暗模式（舊版 iframe 工具除外）。
 3. 共用工具：`core/ble.js`（寫入、記住/自動重連）、`core/ui.js`（toast、esc）。
 
 `js/tools/legacy.js` 內的工具暫時用 iframe 跑原頁面（`legacy/`），改寫完成後移到 `js/tools/` 即可。

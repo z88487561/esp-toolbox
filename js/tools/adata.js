@@ -7,7 +7,7 @@ const G=[['電源 / 亮度',[['⏻ 開 / 關（切換）',0x21,'wide'],['10%',0x
 ['情境模式',[['晚安',0x27],['星空',0x26],['派對',0x2F]]],['RGB 彩燈',[['開啟 RGB',0xF8],['關閉 RGB',0xF9]]]];
 const NK='tb.adata.name.';
 export default{
-id:'adata',cat:'燈光',icon:'💡',name:'威剛燈具',sub:'BEAMY 系列 BLE 燈（逆向原廠 App）',tags:['BLE','單裝置'],
+id:'adata',cat:'燈光',icon:'💡',name:'威剛燈具',sub:'BEAMY 系列 BLE 燈具',tags:['BLE','單裝置'],
 guide:[
 {h:'怎麼配對',li:['點「連接燈具」，瀏覽器的選擇器<b>只會列出名稱開頭為 <code>BEAMY</code></b> 的藍牙裝置。','一次只連一盞；要換燈請先斷線再重新選。','首次選過之後，瀏覽器會記住授權，下次開啟自動重連（需 Chrome 的 <code>getDevices</code> 支援）。','燈具通常同一時間只接受一個藍牙連線，請先關閉原廠 App。']},
 {h:'模組型態（自動偵測）',li:['先試 <b>JDY-19</b>：服務 <code>FFE0</code>、特徵 <code>FFE1</code>（寫入與通知共用）。','失敗再試 <b>RACER03</b>：服務 <code>AE00</code>，寫入 <code>AE01</code>、通知 <code>AE02</code>。']},
