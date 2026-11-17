@@ -10,4 +10,4 @@
 2. 在 `js/registry.js` import 並加進陣列。陣列順序即預設顯示順序，使用者可在首頁「自訂排序」調整，也可用每個工具右上角的 ☀️/🌙 切換亮暗模式（舊版 iframe 工具除外）。
 3. 共用工具：`core/ble.js`（寫入、記住/自動重連）、`core/ui.js`（toast、esc）。
 
-`js/tools/legacy.js` 內的工具暫時用 iframe 跑原頁面（`legacy/`），改寫完成後移到 `js/tools/` 即可。
+所有工具皆為原生模組。`js/tools/legacy.js` 提供 `L()` 輔助函式，可暫時用 iframe 掛載舊的單檔頁面（放在 `legacy/`）。

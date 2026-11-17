@@ -5,5 +5,6 @@ import {nlight,rgb} from './tools/lights.js';
 import adata from './tools/adata.js';
 import {kbMini,kbRp} from './tools/keyboard.js';
 import usbplug from './tools/usbplug.js';
+import irhub from './tools/irhub.js';
 import legacy from './tools/legacy.js';
-export default [mailbox,nlight,rgb,adata,usbplug,...legacy,kbMini,kbRp];
+export default [mailbox,nlight,rgb,adata,usbplug,irhub,...legacy,kbMini,kbRp];

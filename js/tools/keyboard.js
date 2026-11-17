@@ -28,7 +28,7 @@ mount(root){
   ${c.hw?`<div class="card"><h3>🔐 解鎖手勢 PIN（只寫不讀）</h3><div class="sub" id="pd"></div><div class="row"><input type="text" id="pin" placeholder="例如 1,3,2（留空代表取消）"><button class="btn sm" id="ps">更新</button><button class="btn sm dan" id="pc">取消密碼</button></div></div>`:''}
   <div class="card"><div class="row wrap"><span class="sub" style="flex:1">設定檔</span><button class="btn sm" id="ex">⬇ 匯出 JSON</button><button class="btn sm" id="im">⬆ 匯入 JSON</button><button class="btn sm" id="rd">🔄 重新讀取</button><input type="file" id="fi" accept=".json" hidden></div></div>
   ${c.enc?`<div class="card"><h3>旋鈕功能（所有層共用）</h3><div class="row"><label class="f" style="flex:1;flex-direction:column">↻ 順時針<select id="cw"></select></label><label class="f" style="flex:1;flex-direction:column">↺ 逆時針<select id="ccw"></select></label></div></div>`:''}
-  <div class="seg" id="lt" style="margin-bottom:12px">${rng(c.layers,l=>`<button data-l="${l}" class="${l?'':'on'}">Layer ${l}</button>`).join('')}</div><div id="kg"></div>
+  <div class="seg" id="lt" style="margin-bottom:12px">${rng(c.layers,l=>`<button data-l="${l}" class="${l?'':'on'}">Layer ${l}</button>`).join('')}</div>${c.rows?'':`<div class="row"><span class="sub" style="flex:1">網頁顯示欄數</span><select id="cols" style="width:auto"><option value="auto">自動適應</option><option value="2">2 欄</option><option value="3">3 欄</option><option value="4">4 欄</option><option value="6">6 欄</option></select></div>`}<div id="kg" style="margin-top:12px"></div>
   <div class="savebar" id="sb" hidden><button class="btn" id="rs">↺ 恢復預設</button><span class="sub">有未儲存的變更</span><button class="btn pri" id="sv">💾 寫入鍵盤</button></div></div>`;
   const $=s=>root.querySelector(s);
   const conn=(t,on)=>{$('#cs').textContent=t;$('#dot').className='dot'+(on?' on':'')};
@@ -52,17 +52,20 @@ mount(root){
     catch{toast('讀取逾時'+(c.hw?'（請確認已在鍵盤輸入手勢解鎖）':''))}
     defaults();build()}
   const collect=(l=cur)=>{root.querySelectorAll('#kg select').forEach(s=>{const i=+s.dataset.i,t=s.dataset.k;let v=s.value;if(v==='T:')v='T:'+root.querySelector(`input[data-m="${t}"][data-i="${i}"]`).value;data[l][i][t]=v})};
+  const CK='tb.cols.'+c.id,colV=()=>localStorage.getItem(CK)||(innerWidth<550?'auto':'3');
+  const colCss=()=>{const v=colV();return v==='auto'?'':`grid-template-columns:repeat(${v},1fr)`};
   function build(){
     if(c.enc)['cw','ccw'].forEach((id,k)=>{$('#'+id).innerHTML=ENC.map(([a,b])=>`<option value="${b}" ${b===enc[k]?'selected':''}>${a}</option>`).join('')});
     const card=i=>{const k=data[cur][i];return`<div class="kc"><div class="kb">K${i+1}${pins[i]!=null?`<span class="chip">GP${pins[i]}</span>`:''}</div>`+['tap','hold'].map(t=>{const v=k[t],m=v.startsWith('T:');
       return`<div class="th"><span class="lb ${t}">${t==='tap'?'Tap':'Hold'}</span><select data-k="${t}" data-i="${i}">${O.map(([g,it])=>`<optgroup label="${g}">${it.map(([a,b])=>`<option value="${esc(b)}" ${b===(m?'T:':v)?'selected':''}>${esc(a)}</option>`).join('')}</optgroup>`).join('')}</select></div>
       <div class="mw" ${m?'':'hidden'}><input type="text" data-m="${t}" data-i="${i}" maxlength="${c.macroMax}" placeholder="輸入字串（最多 ${c.macroMax} 字元）" value="${esc(m?v.slice(2):'')}">${c.escape?`<div class="tg">${TAGS.map(([a,b])=>`<button type="button" data-ins="${esc(b)}">${a}</button>`).join('')}</div>`:''}</div>`}).join('')+'</div>'};
-    $('#kg').innerHTML=c.rows?[2,1,0].map(r=>`<h2>按鍵 ${r*4+1} – ${r*4+4}</h2><div class="kgrid">${rng(4,j=>card(r*4+j)).join('')}</div>`).join(''):`<div class="kgrid">${rng(N,card).join('')}</div>`}
+    $('#kg').innerHTML=c.rows?[2,1,0].map(r=>`<h2>按鍵 ${r*4+1} – ${r*4+4}</h2><div class="kgrid">${rng(4,j=>card(r*4+j)).join('')}</div>`).join(''):`<div class="kgrid" style="${colCss()}">${rng(N,card).join('')}</div>`}
   $('#kg').onchange=e=>{const s=e.target;if(s.tagName==='SELECT'){s.parentElement.nextElementSibling.hidden=s.value!=='T:'}mark()};
   $('#kg').oninput=mark;
   $('#kg').onclick=e=>{const b=e.target.closest('[data-ins]');if(!b)return;const i=b.closest('.mw').querySelector('input');const p=i.selectionStart??i.value.length;i.value=i.value.slice(0,p)+b.dataset.ins+i.value.slice(i.selectionEnd??p);i.focus();mark()};
   $('#lt').onclick=e=>{const b=e.target.closest('button');if(!b)return;collect();cur=+b.dataset.l;root.querySelectorAll('#lt button').forEach(x=>x.classList.toggle('on',x===b));build()};
   if(c.enc)['cw','ccw'].forEach((id,k)=>$('#'+id).onchange=e=>{enc[k]=e.target.value;mark()});
+  if(!c.rows){$('#cols').value=colV();$('#cols').onchange=e=>{localStorage.setItem(CK,e.target.value);const g=root.querySelector('.kgrid');if(g)g.style.cssText=colCss()}}
   $('#rd').onclick=read;
   $('#rs').onclick=()=>{if(!confirm('確定要恢復所有按鍵為預設值嗎？\n（僅還原目前畫面，尚未寫入鍵盤）'))return;defaults();build();mark();toast('已恢復預設值（請記得寫入鍵盤）')};
   $('#sv').onclick=async()=>{if(!link)return;$('#sv').disabled=true;toast('寫入中…');collect();
