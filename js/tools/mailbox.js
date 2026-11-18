@@ -1,5 +1,5 @@
 import {Link} from '../core/link.js';
-import {delay} from '../core/ble.js';
+import {delay,remember} from '../core/ble.js';
 import {esc} from '../core/ui.js';
 const SVC='4fafc201-1fb5-459e-8fcc-c5c9c331914b',CH='beb5483e-36e1-4688-b7f5-ea07361b26a8',NAME='PWR_SENSOR',PAGE=50,UK='tb.mail.usb';
 export default{
@@ -32,18 +32,22 @@ mount(root){
   const ready=async(l,label)=>{link=l;conn(label,true);log('SYS',label);btns(true);await send('SYNC');setTimeout(()=>link===l&&histLoad(),500)};
   async function openUSB(p){cancel();const l=new Link(onLine,onClose);await l.usb(p,{signals:true});
     try{const i=p.getInfo();localStorage.setItem(UK,JSON.stringify({v:i.usbVendorId,p:i.usbProductId}))}catch{}await ready(l,'USB 已連線')}
-  async function openBT(d){cancel();dev0=d;const l=new Link(onLine,onClose);await l.ble(d,SVC,CH,CH,{resp:true});await ready(l,'藍牙已連線')}
+  async function openBT(d){cancel();dev0=d;const l=new Link(onLine,onClose);await l.ble(d,SVC,CH,CH,{resp:true});remember('mailbox',d.id);await ready(l,'藍牙已連線')}
   const cancel=()=>{try{autoCtl?.abort()}catch{}autoCtl=null};
   async function autoBT(d){if(manual||!alive)return;cancel();const c=new AbortController();autoCtl=c;
     const go=async()=>{if(c.signal.aborted||manual||link)return;try{await openBT(d)}catch{if(!manual&&alive)setTimeout(()=>autoBT(d),3000)}};
     try{d.addEventListener('advertisementreceived',go,{once:true});await d.watchAdvertisements({signal:c.signal})}
-    catch{log('SYS','瀏覽器不支援廣播監聽，改為定時重試連線（請按 Hub 按鈕）');poll(d)}}
+    catch{log('SYS','瀏覽器不支援廣播監聽，改為每 3 秒重試連線');poll(d)}}
   async function poll(d){if(polling)return;polling=true;while(!manual&&alive&&!link){try{await openBT(d);break}catch{await delay(3000)}}polling=false}
   async function auto(){if(busy||link||!alive)return;busy=true;
     try{if(navigator.serial?.getPorts){const ps=await navigator.serial.getPorts();let inf=null;try{inf=JSON.parse(localStorage.getItem(UK))}catch{}
         const p=inf?ps.find(x=>{const i=x.getInfo();return i.usbVendorId===inf.v&&i.usbProductId===inf.p}):ps[0];
         if(p)try{await openUSB(p);return}catch{log('SYS','USB 自動連線失敗')}}
-      if(navigator.bluetooth?.getDevices){const d=(await navigator.bluetooth.getDevices()).find(x=>x.name===NAME);if(d){conn('等待 Hub 廣播…');log('SYS','等待 Hub 藍牙廣播…（請按 Hub 按鈕）');autoBT(d)}}}
+      if(!navigator.bluetooth)log('SYS','此瀏覽器不支援 Web Bluetooth');
+      else if(!navigator.bluetooth.getDevices)log('SYS','⚠️ 瀏覽器沒有 getDevices()，無法自動重連藍牙：請在 chrome://flags 啟用 #enable-web-bluetooth-new-permissions-backend 後重新啟動 Chrome');
+      else{const all=await navigator.bluetooth.getDevices(),ids=JSON.parse(localStorage.getItem('tb.devs.mailbox')||'[]'),d=all.find(x=>ids.includes(x.id))||all.find(x=>x.name===NAME);
+        if(d){conn('尋找 Hub 中…');log('SYS','找到已授權的藍牙裝置，嘗試連線…');autoBT(d)}
+        else log('SYS',`⚠️ 瀏覽器沒有此網址已授權的藍牙裝置（getDevices 回傳 ${all.length} 筆）。請手動按一次「藍牙」連線；若連過仍如此，請確認沒有清除網站資料、且是同一個網址`)}}
     finally{busy=false}}
   $('#usb').onclick=async()=>{manual=false;try{await openUSB(await navigator.serial.requestPort())}catch{log('SYS','USB 連線失敗')}};
   $('#bt').onclick=async()=>{manual=false;try{await openBT(await navigator.bluetooth.requestDevice({filters:[{name:NAME}],optionalServices:[SVC]}))}catch{log('SYS','藍牙連線失敗')}};
