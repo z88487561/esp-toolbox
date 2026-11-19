@@ -1,5 +1,6 @@
 import {Link} from '../core/link.js';
 import {toast,esc} from '../core/ui.js';
+import {permitted,keepTrying,remember,autoGuide} from '../core/ble.js';
 const NS='esp32hub_',BPG=4,MAXG=10,UK='tb.ir.usb',SVC='4fafc201-1fb5-459e-8fcc-c5c9c331914b',CH='beb5483e-36e1-4688-b7f5-ea07361b26a8';
 const API='https://api.github.com/repos/probonopd/irdb/contents/codes',CDN='https://cdn.jsdelivr.net/gh/probonopd/irdb@master/codes',CMS=6048e5;
 const STATE=['PANASONIC_AC','DAIKIN','DAIKIN2','MITSUBISHI_AC','GREE','COOLIX48','HITACHI_AC','FUJITSU_AC'],isState=p=>STATE.includes((p||'').toUpperCase());
@@ -17,10 +18,11 @@ export default{
 id:'irhub',icon:'📡',name:'IR 遙控器 Hub',sub:'學習、IRDB 選碼、群組與實體按鍵',tags:['USB','BLE','自動連線'],
 guide:[
 {h:'連線方式',li:['<b>USB</b>：Web Serial，115200 baud；授權一次後下次自動連線（記住 VID/PID）。','<b>藍牙</b>：名稱 <code>ESP32-IR-Hub</code>，服務與信箱 Hub 相同，靠名稱區分。','快捷鍵：F1 = USB、F2 = 藍牙、Esc = 斷線、Ctrl+L = 開始學習。']},
+autoGuide(),
 {h:'資料同步與配對規則',li:['連線後送 <code>READ_ALL</code>，<b>裝置（NVS）資料為準</b>，會覆蓋網頁本機的群組與按鍵。','群組編號 0–9（最多 10 組），每組 4 個按鍵；刪除群組不重排編號，新增時取第一個空位。','學習或從 IRDB 指定的碼會同步寫入裝置，<b>實體按鍵才發得出來</b>；匯入 JSON 只存在網頁，需逐顆重新指定才會寫回。','冷氣等狀態型協定只能存到裝置，網頁無法即時測試發射。','切換群組時會同步通知裝置（<code>SET_GROUP</code>）。']},
 {h:'IRDB 選碼',li:['資料來源為 probonopd/irdb（需要網路）。','目前只能換算 NEC 家族與 Sony SIRC（12/15/20 bit），其他協定請改用「開始學習」。']}],
 mount(root){
-  let link=null,cur=0,edit=false,sync=null,paused=false,logs=[],alive=true,dev=null;
+  let link=null,cur=0,edit=false,sync=null,paused=false,logs=[],alive=true,dev=null,manual=false,stopI=null;
   const BT=(id,t,c='')=>`<button class="btn ${c}" id="${id}">${t}</button>`;
   root.innerHTML=`<div class="card"><div class="row wrap">${BT('usb','🔌 USB')}${BT('ble','📶 藍牙','pri')}${BT('off','✕ 斷線','dan')}</div><div class="status"><i class="dot" id="dot"></i><span id="cs">未連線</span></div><div class="sub" id="ln" style="margin-top:6px">等待指令輸入…</div></div>
   <div class="card"><h3>🎓 學習 / 指定位置</h3><div class="row wrap"><select id="lg"></select><select id="lp"></select><input type="text" id="nm" placeholder="按鍵名稱" style="width:110px;flex:1">${BT('lb','開始學習','pri')}</div></div>
@@ -38,15 +40,19 @@ mount(root){
   async function cmd(c){if(!link?.kind){say('⚠️ 未連線，請先點擊連線按鈕');conn('未連線');throw Error('未連線')}say('發送: '+c);try{await link.send(c)}catch(e){say('發送失敗: '+e);throw e}}
   const q=async(c)=>{try{await cmd(c)}catch{}};
   const wr=(g,p,d)=>q(d.isState?`SAVE_STATE,${g},${p-1},${d.p},${d.h}`:`SAVE,${g},${p-1},${d.p},${d.h},${d.b},${d.name}`);
-  const onClose=k=>{link=null;conn('已斷線');slog('sys',k==='ble'?'📶 BLE 已斷線':'🔌 USB 已中斷')};
+  const onClose=k=>{link=null;conn('已斷線');slog('sys',k==='ble'?'📶 BLE 已斷線':'🔌 USB 已中斷');if(k==='ble'&&dev&&!manual&&alive){conn('自動重連中…');stopI=keepTrying(dev,bleOpen,()=>alive&&!manual&&!link?.kind)}};
   async function useLink(l,label){link=l;conn(label,true);slog('sys','✅ '+label);setTimeout(()=>q('READ_ALL'),300)}
   async function openUSB(p,auto){if(link?.kind)return toast('已連線，請先斷線');const l=new Link(handle,onClose);await l.usb(p);try{const i=p.getInfo();localStorage.setItem(UK,JSON.stringify({v:i.usbVendorId,p:i.usbProductId}))}catch{}await useLink(l,auto?'USB 已連線（自動）':'USB 已連線')}
-  $('#usb').onclick=async()=>{try{await openUSB(await navigator.serial.requestPort())}catch(e){if(!/No port selected/.test(e.message))say('USB 連線失敗: '+e)}};
-  $('#ble').onclick=async()=>{if(link?.kind)return toast('已連線，請先斷線');try{const d=await navigator.bluetooth.requestDevice({filters:[{name:'ESP32-IR-Hub'}],optionalServices:[SVC]});const l=new Link(handle,onClose);await l.ble(d,SVC,CH,CH);await useLink(l,'藍牙已連線')}catch(e){if(!/cancel/i.test(e.message))say('BLE 連線失敗: '+e)}};
-  const off=async()=>{const l=link;link=null;await l?.close();conn('已斷線');slog('sys','🔌 已手動斷線')};$('#off').onclick=off;
-  async function auto(){try{const ps=await navigator.serial.getPorts();if(!ps.length)return slog('sys','💡 首次使用請點擊「🔌 USB」選擇裝置');let i=null;try{i=JSON.parse(localStorage.getItem(UK))}catch{}
-    const p=i?ps.find(x=>{const y=x.getInfo();return y.usbVendorId===i.v&&y.usbProductId===i.p}):ps[0];if(!p)return;await openUSB(p,true)}
-    catch(e){slog('sys',/already open/.test(e.message)?'⚠️ 裝置被其他程式占用，請關閉 Serial Monitor':'⚠️ 自動連線失敗：'+e.message)}}
+  $('#usb').onclick=async()=>{stopI?.();try{await openUSB(await navigator.serial.requestPort())}catch(e){if(!/No port selected/.test(e.message))say('USB 連線失敗: '+e)}};
+  const bleOpen=async d=>{if(!alive||link?.kind)throw Object.assign(Error(),{fatal:true});const l=new Link(handle,onClose);await l.ble(d,SVC,CH,CH);remember('irhub',d.id);dev=d;await useLink(l,'藍牙已連線')};
+  $('#ble').onclick=async()=>{if(link?.kind)return toast('已連線，請先斷線');manual=false;stopI?.();try{await bleOpen(await navigator.bluetooth.requestDevice({filters:[{name:'ESP32-IR-Hub'}],optionalServices:[SVC]}))}catch(e){if(!/cancel|No device selected/i.test(e.message))say('BLE 連線失敗: '+e)}};
+  const off=async()=>{manual=true;stopI?.();const l=link;link=null;await l?.close();conn('已斷線');slog('sys','🔌 已手動斷線')};$('#off').onclick=off;
+  async function auto(){
+    try{const ps=navigator.serial?await navigator.serial.getPorts():[];let i=null;try{i=JSON.parse(localStorage.getItem(UK))}catch{}
+      const p=i?ps.find(x=>{const y=x.getInfo();return y.usbVendorId===i.v&&y.usbProductId===i.p}):ps[0];if(p){await openUSB(p,true);return}}
+    catch(e){slog('sys',/already open/.test(e.message)?'⚠️ 裝置被其他程式占用，請關閉 Serial Monitor':'⚠️ USB 自動連線失敗：'+e.message)}
+    const d=(await permitted('irhub',{name:'ESP32-IR-Hub',say:m=>slog('sys',m)}))[0];
+    if(d&&alive&&!link?.kind){dev=d;conn('尋找 Hub 中…');slog('sys','找到已授權的藍牙裝置，嘗試連線…');stopI=keepTrying(d,bleOpen,()=>alive&&!manual&&!link?.kind)}}
   const hk=e=>{if(e.key==='F1'){e.preventDefault();$('#usb').click()}else if(e.key==='F2'){e.preventDefault();$('#ble').click()}else if(e.key==='Escape')off();else if(e.ctrlKey&&e.key==='l'){e.preventDefault();learn()}};addEventListener('keydown',hk);
   const lb=(t,c)=>{const b=$('#lb');b.textContent=t;b.className='btn '+(c||'pri')};
   async function learn(){lb('⏳ 等待訊號…','wait');try{await cmd('LEARN_ON')}catch{lb('開始學習')}} $('#lb').onclick=learn;
@@ -117,5 +123,5 @@ mount(root){
   const man=()=>{const v=$('#si').value.trim();if(v){$('#si').value='';q(v)}};$('#ss').onclick=man;$('#si').onkeydown=e=>{if(e.key==='Enter')man()};
   if(!localStorage.getItem(NS+'usb_tip_shown')){const n=document.createElement('div');n.className='note warn';n.innerHTML='💡 首次使用：請點「🔌 USB」選擇 ESP32 裝置，瀏覽器會記住，之後自動連線。 <button class="btn sm" style="float:right">知道了</button>';n.querySelector('button').onclick=()=>{n.remove();localStorage.setItem(NS+'usb_tip_shown','1')};root.prepend(n)}
   all();setTimeout(()=>alive&&auto(),500);
-  return()=>{alive=false;removeEventListener('keydown',hk);link?.close()};
+  return()=>{alive=false;stopI?.();removeEventListener('keydown',hk);link?.close()};
 }};

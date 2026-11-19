@@ -1,4 +1,4 @@
-import {delay,write,remember,saved,hasBLE} from '../core/ble.js';
+import {delay,write,remember,permitted,keepTrying,autoGuide,hasBLE} from '../core/ble.js';
 import {toast,esc,hms} from '../core/ui.js';
 const SVC='4fa8691a-1360-4c8f-bd00-885481c3d1e1',BR='beb5483e-36e1-4688-b7f5-ea07361b26a8',GR='d2c88f1b-4890-4c70-98d0-836798e276f2';
 const U={nl:{timer:'7b1a2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d',name:'8f2e910a-3a1b-4c2d-8e4f-1a2b3c4d5e6f',role:'3c9a1e2b-7d4f-4a8e-9b6c-2f1a0d8e5c3b'},
@@ -11,13 +11,13 @@ const common=[
 {h:'多燈配對流程',li:['按「新增燈具」，選擇器依<b>服務 UUID</b> 篩選，可重複新增多盞；同一盞不能重複加入。','每盞燈有獨立的「勾選」：<b>只有勾選的燈會收到亮度／模式／定時指令</b>。','換組別、改名都是逐盞操作，需要該盞燈目前已連線。']},
 {h:'分組（第 1–8 組）',li:['組別存在燈具裡；同組燈靠 <b>ESP-NOW</b> 互相同步，網頁只需要連其中一盞就能帶動同組。','換組後網頁會重新計算兩個組別的「主控」徽章。']},
 {h:'主燈 / 從燈 / 主控',li:['<b>主燈</b>（旋鈕那盞）與<b>從燈</b>由韌體回報；舊韌體沒有角色欄位時顯示「未知」。','同組只應有<b>一盞主燈</b>；偵測到多盞會出現警示，否則從燈會被多台主燈搶著控制、亮度忽明忽暗。','<b>主控</b> = 該組畫面顯示的依據：有主燈用主燈；沒有主燈則取最先連線的；每次連線／斷線／換組都會重算。','只有主控的通知會更新畫面；而且<b>所有已連線的燈同組時</b>才會讓共用控制項跟著變，多組同時連線時控制項只當「要送出的值」。','網頁只顯示旋鈕調光，不再轉發給其他燈（避免和 ESP-NOW 互搶）。']},
-{h:'改名',li:['名稱上限 <b>20 bytes（UTF-8）</b>，中文每字 3 bytes，約 6 個中文字。','寫入後燈具約 0.5 秒重啟並斷線，請重新「新增燈具」。']}];
+{h:'改名',li:['名稱上限 <b>20 bytes（UTF-8）</b>，中文每字 3 bytes，約 6 個中文字。','寫入後燈具約 0.5 秒重啟並斷線，頁面會自動重連；若沒連上再按「重連已記住的燈」。']}];
 
 function make(c){return{
 id:c.id,cat:'燈光',icon:c.icon,name:c.name,sub:c.sub,tags:['BLE','多裝置'],
-guide:[{h:'兩種 N-Light 的辨識',li:[`<b>N-Light 小夜燈</b>與<b>N-Light RGB 氛圍燈</b>使用相同的服務 UUID，所以兩邊的選擇器會列出同一批燈。`,`連線時工具會檢查「定時特徵值」：如果選到的是${c.otherName}，會直接提示改用該工具。`]},...common,...c.extra],
+guide:[{h:'兩種 N-Light 的辨識',li:[`<b>N-Light 小夜燈</b>與<b>N-Light RGB 氛圍燈</b>使用相同的服務 UUID，所以兩邊的選擇器會列出同一批燈。`,`連線時工具會檢查「定時特徵值」：如果選到的是${c.otherName}，會直接提示改用該工具。`]},...common,autoGuide(),...c.extra],
 mount(root){
-  const X=U[c.k],O=U[c.o];let devs=[],seq=0,prim={},busy=false,pend=null,alive=true;
+  const X=U[c.k],O=U[c.o];let devs=[],seq=0,prim={},busy=false,pend=null,alive=true,hint='';const stops={};
   const st={on:true,bright:76,mode:0,hue:20,sat:255,speed:50},T={1:0,2:0};
   const blk=(ty,t,h,m,q)=>`<div class="card"><h3>${t}</h3><div class="row c"><input type="number" id="h${ty}" min="0" max="24" value="${h}">時<input type="number" id="m${ty}" min="0" max="59" value="${m}">分</div>
    <div class="row"><button class="btn pri" data-t="go" data-y="${ty}">啟動</button><button class="btn dan" data-t="no" data-y="${ty}">取消</button></div><div class="cd" id="cd${ty}" hidden></div>
@@ -53,7 +53,7 @@ mount(root){
     const ms=m.filter(d=>d.role==='master');prim[g]=(ms.length?ms:m).sort((a,b)=>a.seq-b.seq)[0].id}
   function render(){
     if(!alive)return;const L=$('#list');
-    if(!devs.length){L.innerHTML='<div class="empty">尚無連線裝置</div>';return}
+    if(!devs.length){L.innerHTML='<div class="empty">'+esc(hint||'尚無連線裝置')+'</div>';return}
     const cnt={};devs.forEach(d=>d.role==='master'&&(cnt[d.group]=(cnt[d.group]||0)+1));
     const w=Object.keys(cnt).filter(g=>cnt[g]>1);
     L.innerHTML=(w.length?`<div class="note warn">⚠️ 第 ${w.join('、')} 組同時有多台主燈，請只保留一台。</div>`:'')+devs.map((d,i)=>{
@@ -64,8 +64,8 @@ mount(root){
   async function open(dev,silent){
     if(devs.some(d=>d.id===dev.id))return silent||toast('此燈已在清單中');
     try{
-      const srv=await dev.gatt.connect();await delay(300);const svc=await srv.getPrimaryService(SVC);
-      if(!await has(svc,X.timer))throw new Error(await has(svc,O.timer)?`這是「${c.otherName}」，請改用該工具`:'韌體版本不符（缺少定時特徵值）');
+      const srv=await dev.gatt.connect();if(!alive)throw Object.assign(Error('離開'),{fatal:true});await delay(300);const svc=await srv.getPrimaryService(SVC);
+      if(!await has(svc,X.timer))throw Object.assign(new Error(await has(svc,O.timer)?`這是「${c.otherName}」，請改用該工具`:'韌體版本不符（缺少定時特徵值）'),{fatal:true});
       const bc=await svc.getCharacteristic(BR),tc=await svc.getCharacteristic(X.timer),gc=await svc.getCharacteristic(GR);
       let nc=null,role=null,group=1;
       try{nc=await svc.getCharacteristic(X.name)}catch{}
@@ -75,10 +75,10 @@ mount(root){
       await bc.startNotifications();
       bc.addEventListener('characteristicvaluechanged',e=>{const v=e.target.value;d.val=pct(v);const el=$('#v'+devs.indexOf(d));if(el)el.textContent=d.val;
         if(prim[d.group]!==d.id)return;if(new Set(devs.map(x=>x.group)).size===1){apply(v);paint()}});
-      dev.addEventListener('gattserverdisconnected',()=>{devs=devs.filter(x=>x.id!==d.id);recompute(d.group);render()});
+      dev.addEventListener('gattserverdisconnected',()=>{devs=devs.filter(x=>x.id!==d.id);recompute(d.group);render();if(alive)retry(dev)});
       devs.push(d);recompute(group);remember(c.id,dev.id);render();
       try{const v=await bc.readValue();d.val=pct(v);apply(v);paint();render()}catch{}
-    }catch(e){try{dev.gatt.disconnect()}catch{}if(!silent)toast('連線失敗：'+e.message)}
+    }catch(e){try{dev.gatt.disconnect()}catch{}if(!silent&&!e.fatal)toast('連線失敗：'+e.message);throw e}
   }
   async function setGroup(d,g){const old=d.group;
     try{if(c.verify){await d.gc.writeValue(Uint8Array.of(g));d.group=(await d.gc.readValue()).getUint8(0);if(d.group!==g)toast(`組別未生效：裝置仍為第 ${d.group} 組`)}
@@ -88,15 +88,16 @@ mount(root){
     if(!d.nc)return toast('此韌體沒有改名功能');
     const n=(prompt('新的藍牙名稱（上限 20 bytes，約 6 個中文字）',d.name)||'').trim();if(!n)return;
     const b=new TextEncoder().encode(n);if(b.length>20)return toast(`名稱過長：${b.length} bytes（上限 20）`);
-    try{await d.nc.writeValue(b);toast('已寫入，燈具約 0.5 秒後重啟並斷線，請重新新增')}catch(e){toast('改名失敗：'+e.message)}}
+    try{await d.nc.writeValue(b);toast('已寫入，燈具重啟中，將自動重連')}catch(e){toast('改名失敗：'+e.message)}}
   async function sendT(ty,sec){
     if(!devs.length)return toast('請先連線至少一盞燈');
     const p=Uint8Array.of(ty,sec&255,sec>>8&255,sec>>16&255,sec>>>24);
     for(const d of tg())try{await write(d.tc,p)}catch(e){console.warn(e)}
     T[ty]=sec;const cd=$('#cd'+ty);cd.hidden=!sec;cd.textContent=hms(sec);
   }
-  $('#add').onclick=async()=>{try{await open(await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]}))}catch(e){if(e.name!=='NotFoundError')toast(e.message)}};
-  const auto=async()=>{for(const d of await saved(c.id))if(alive)await open(d,true)};
+  $('#add').onclick=async()=>{let d;try{d=await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]})}catch(e){if(e.name!=='NotFoundError')toast(e.message);return}open(d).catch(()=>{})};
+  const retry=dev=>{stops[dev.id]?.();stops[dev.id]=keepTrying(dev,x=>open(x,true),()=>alive)};
+  const auto=async()=>{hint='';for(const d of await permitted(c.id,{say:m=>{hint=m;render()}}))if(alive&&!devs.some(x=>x.id===d.id)){hint='自動連線中…（燈具需在範圍內並通電）';render();retry(d)}};
   $('#re').onclick=auto;
   const L=$('#list');
   L.onchange=e=>{const t=e.target,d=devs[+t.dataset.i];if(!d)return;if(t.dataset.a==='sel')d.sel=t.checked;if(t.dataset.a==='grp')setGroup(d,+t.value)};
@@ -115,7 +116,7 @@ mount(root){
     $('#sp').oninput=e=>{st.speed=+e.target.value;paint();push()};$('#hue').oninput=e=>{st.hue=+e.target.value;st.sat=255;paint();push()}}
   const iv=setInterval(()=>{for(const y of[1,2]){if(T[y]>0){T[y]--;const cd=$('#cd'+y);if(cd){cd.textContent=hms(T[y]);cd.hidden=!T[y]}}}},1000);
   paint();render();auto();
-  return()=>{alive=false;clearInterval(iv);devs.forEach(d=>{try{d.dev.gatt.disconnect()}catch{}})};
+  return()=>{alive=false;Object.values(stops).forEach(f=>f());clearInterval(iv);devs.forEach(d=>{try{d.dev.gatt.disconnect()}catch{}})};
 }}}
 
 export const nlight=make({id:'nlight',k:'nl',o:'rg',icon:'🌙',name:'N-Light 小夜燈',sub:'亮度同步、分組、倒數與光線鬧鐘',otherName:'N-Light RGB 氛圍燈',verify:true,alarm:true,rgb:false,

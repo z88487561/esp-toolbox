@@ -1,4 +1,4 @@
-import {delay,remember,saved,hasBLE} from '../core/ble.js';
+import {delay,remember,permitted,keepTrying,autoGuide,hasBLE} from '../core/ble.js';
 import {toast,esc} from '../core/ui.js';
 const SVC='69bb3531-4255-4acc-9667-6c066b29bc74',CH='e4f32c31-b8e4-4a9b-b329-8bb20ad32bd4',p2=n=>String(n).padStart(2,'0');
 const sel=(id,n,f)=>`<select id="${id}">${Array.from({length:n},(_,i)=>`<option value="${i+1}">${f(i+1)}</option>`).join('')}</select>`;
@@ -7,12 +7,13 @@ const WD=['週日','週一','週二','週三','週四','週五','週六'];
 export default{
 id:'usbplug',icon:'🔌',name:'智慧 USB 插座',sub:'插座排程、PIN、遙控器群組',tags:['BLE','PIN'],
 guide:[
-{h:'怎麼配對（瀏覽器 ↔ 裝置）',li:['BLE 選擇器依服務 UUID <code>69bb3531-…</code> 篩選；<b>插座與遙控器共用同一服務</b>，連上後由韌體回傳 <code>PLUG_INFO</code> 或 <code>REMOTE_INFO</code>，頁面自動顯示插座或遙控器面板。','連線後先送 <code>CHECK_AUTH</code>：回 <code>AUTH:NONE</code> 直接進入；回 <code>AUTH:REQUIRED</code> 需輸入 <b>4–10 位數字 PIN</b>。','驗證通過後自動把瀏覽器時間寫入裝置並讀取狀態。','成功連過的裝置會被記住，下次開啟自動重連。']},
+{h:'怎麼配對（瀏覽器 ↔ 裝置）',li:['BLE 選擇器依服務 UUID <code>69bb3531-…</code> 篩選；<b>插座與遙控器共用同一服務</b>，連上後由韌體回傳 <code>PLUG_INFO</code> 或 <code>REMOTE_INFO</code>，頁面自動顯示插座或遙控器面板。','連線後先送 <code>CHECK_AUTH</code>：回 <code>AUTH:NONE</code> 直接進入；回 <code>AUTH:REQUIRED</code> 需輸入 <b>4–10 位數字 PIN</b>。','驗證通過後自動把瀏覽器時間寫入裝置並讀取狀態。']},
+autoGuide(),
 {h:'插座 ↔ 遙控器 配對規則',li:['<b>遙控器</b>只需設定自己屬於「遙控器 1–10（Group）」。','<b>插座</b>要設定兩項：「對應遙控器」（Group 1–10）與「對應組別號碼」（第 1–4 組）。','設定成功的提示為：現在由 [遙控器 N] 的 [第 M 組] 控制。兩邊的 Group 要一致才會對上。']},
 {h:'排程與日期規則',li:['平日排程 = 週一至週五＋補班日；假日排程 = 週六日＋放假日。','特殊日期（放假／補班）需按「儲存日期變更至裝置」才會寫入；清單只列未來 180 天內的自訂日期。','Wi-Fi 僅用於每日定時 NTP 對時；上電預設可選 關 / 開 / 恢復斷電前狀態。']},
 {h:'名稱與 PIN',li:['改名上限 20 bytes（約 6 個中文字），送出後插座重啟，需重新連線。','PIN 為 4–10 位純數字；可隨時停用。']}],
 mount(root){
-  let dev=null,ch=null,authed=false,alive=true,base=null,t0=0,days=[];
+  let dev=null,ch=null,authed=false,alive=true,base=null,t0=0,days=[],manual=false,stopU=null;
   const S={wdEn:false,wd:['01','00','03','00'],weEn:false,we:['06','00','09','00']};
   const row=(l,x)=>`<label class="f" style="margin-top:10px"><span>${l}</span></label>${x}`;
   root.innerHTML=`${hasBLE?'':'<div class="note warn">此瀏覽器不支援 Web Bluetooth</div>'}
@@ -44,11 +45,11 @@ mount(root){
   const cmd=async(c,ok)=>{if(!authed){toast('尚未完成連線驗證');return false}const r=await raw(c);if(r&&ok)toast(ok);return r};
   const sorted=()=>days.sort((a,b)=>a.d.localeCompare(b.d));
   async function open(d){hide();authed=false;dev=d;st('連線中…','');
-    d.addEventListener('gattserverdisconnected',()=>{if(!alive)return;hide();ch=null;authed=false;clearBase();st('已斷開連線','err')});
-    const s=await d.gatt.connect();await delay(300);const sv=await s.getPrimaryService(SVC);ch=await sv.getCharacteristic(CH);
+    if(!d._b){d._b=1;d.addEventListener('gattserverdisconnected',()=>{if(!alive)return;hide();ch=null;authed=false;clearBase();if(manual)st('已斷開連線','err');else{st('已斷線，自動重連中…','');retry(d)}})}
+    const s=await d.gatt.connect();if(!alive)throw Object.assign(Error(),{fatal:true});await delay(300);const sv=await s.getPrimaryService(SVC);ch=await sv.getCharacteristic(CH);
     await ch.startNotifications();ch.addEventListener('characteristicvaluechanged',e=>msg(new TextDecoder().decode(e.target.value)));
     remember('usbplug',d.id);st('已連線，確認中…','');await raw('CHECK_AUTH')}
-  $('#c').onclick=async()=>{try{await open(await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]}))}catch(e){st('失敗：'+e.message,'err');ch=null}};
+  $('#c').onclick=async()=>{stopU?.();try{await open(await navigator.bluetooth.requestDevice({filters:[{services:[SVC]}]}))}catch(e){st('失敗：'+e.message,'err');ch=null}};
   $('#pg').onclick=()=>{const p=$('#pin').value.trim();/^\d{4,10}$/.test(p)?raw('AUTH:'+p):toast('請輸入 4~10 位純數字 PIN')};
   async function ready(){authed=true;$('#pa').hidden=true;st('已連線：'+(dev.name||'未命名裝置'),'on');await cmd('SET_TIME:'+(Date.now()/1000|0));await delay(300);await cmd('GET_INFO');await delay(200);await cmd('GET_STATUS')}
   function clearBase(){base=null}
@@ -94,6 +95,7 @@ mount(root){
   $('#nps').onclick=async()=>{const p=$('#np').value.trim();if(!/^\d{4,10}$/.test(p))return toast('PIN 長度需為 4~10 位純數字');if(await cmd('SET_PIN:'+p,'PIN 保護已啟用'))$('#np').value=''};
   $('#npd').onclick=()=>cmd('DISABLE_PIN','PIN 保護已停用');
   $('#dd').value=new Date().toISOString().slice(0,10);sched();tags();d180();
-  saved('usbplug').then(l=>l[0]&&alive&&open(l[0]).catch(()=>st('自動重連失敗，請手動連線','')));
-  return()=>{alive=false;clearInterval(iv);try{dev?.gatt.disconnect()}catch{}};
+  const retry=d=>{stopU?.();stopU=keepTrying(d,open,()=>alive&&!manual)};
+  permitted('usbplug',{say:m=>st(m,'')}).then(l=>{if(l[0]&&alive){st('自動連線中…（裝置需在範圍內並通電）','');retry(l[0])}});
+  return()=>{alive=false;stopU?.();clearInterval(iv);try{dev?.gatt.disconnect()}catch{}};
 }};

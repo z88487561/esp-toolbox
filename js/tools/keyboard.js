@@ -1,5 +1,5 @@
 import {Link} from '../core/link.js';
-import {delay} from '../core/ble.js';
+import {delay,remember,permitted,keepTrying,autoGuide} from '../core/ble.js';
 import {toast,esc} from '../core/ui.js';
 const rng=(n,f)=>Array.from({length:n},(_,i)=>f(i)),cc=s=>s.charCodeAt(0)+'';
 const C2=['CTRL+C 複製','CTRL+V 貼上','CTRL+X 剪下','CTRL+Z 復原','CTRL+Y 取消復原','CTRL+S 儲存','CTRL+A 全選','CTRL+F 搜尋','CTRL+W 關閉分頁','CTRL+T 新分頁','ALT+F4 關閉','ALT+TAB 切換','GUI+D 桌面','GUI+L 鎖定','GUI+E 檔案總管'];
@@ -19,7 +19,7 @@ const escM=s=>s.replace(/,/g,'\\c').replace(/\^/g,'\\p').replace(/\|/g,'\\v').re
 
 function make(c){return{id:c.id,icon:c.icon,name:c.name,sub:c.sub,tags:c.ble?['USB','BLE']:['USB'],guide:c.guide,
 mount(root){
-  const O=opts(c);let link=null,wait=null,N=c.keys||0,pins=[],data=[],enc=['VUP','VDN'],cur=0,alive=true;
+  const O=opts(c);let link=null,wait=null,N=c.keys||0,pins=[],data=[],enc=['VUP','VDN'],cur=0,alive=true,stopK=null;
   const lab=v=>{if(!v)return'—';if(v.startsWith('T:'))return`📝 "${v.slice(2)}"`;for(const[,it]of O){const f=it.find(x=>x[1]===v);if(f)return f[0]}return v};
   const defaults=()=>{if(!N)return;data=rng(c.layers,l=>rng(N,i=>({tap:l?'':97+i+'',hold:c.hw&&!l&&i<3?'L:'+(i+1):''})))};
   root.innerHTML=`<div class="card" id="cn"><div id="cinfo"><h3>連線到鍵盤</h3><div class="sub">${c.ble?'選擇連線方式（同時只用一條通道）':'透過 USB 連線'}${c.hw?'<br><b class="warnc">請先在實體鍵盤輸入手勢解鎖，再進行讀取</b>':''}</div></div>
@@ -38,8 +38,10 @@ mount(root){
   const shown=on=>{$('#ed').hidden=!on;$('#cinfo').hidden=on;$('#usb').hidden=on;if(c.ble)$('#ble').hidden=on;$('#off').hidden=!on;if(!on)$('#sb').hidden=true};
   const onClose=()=>{link=null;shown(false);conn('已斷線');toast('連線已中斷')};
   async function after(l,label){link=l;shown(true);conn(label,true);await delay(1500);await read()}
-  $('#usb').onclick=async()=>{try{const l=new Link(onLine,onClose);await l.usb(await navigator.serial.requestPort());await after(l,'USB 已連線')}catch(e){toast('USB 連線失敗：'+(e.message||e))}};
-  if(c.ble)$('#ble').onclick=async()=>{try{const d=await navigator.bluetooth.requestDevice({filters:[{name:c.ble}],optionalServices:[UART[0]]});const l=new Link(onLine,onClose);await l.ble(d,UART[0],UART[1],UART[2],{gap:30});await after(l,'BLE 已連線')}catch(e){toast('BLE 連線失敗，請確認鍵盤已開啟')}};
+  $('#usb').onclick=async()=>{stopK?.();try{const l=new Link(onLine,onClose);await l.usb(await navigator.serial.requestPort());await after(l,'USB 已連線')}catch(e){toast('USB 連線失敗：'+(e.message||e))}};
+  const bleOpen=async d=>{if(!alive)throw Object.assign(Error(),{fatal:true});const l=new Link(onLine,onClose);await l.ble(d,UART[0],UART[1],UART[2],{gap:30});remember(c.id,d.id);await after(l,'BLE 已連線')};
+  if(c.ble){$('#ble').onclick=async()=>{stopK?.();try{await bleOpen(await navigator.bluetooth.requestDevice({filters:[{name:c.ble}],optionalServices:[UART[0]]}))}catch(e){toast('BLE 連線失敗，請確認鍵盤已開啟')}};
+    permitted(c.id,{name:c.ble,quietFirst:true,say:m=>{conn('未連線');toast(m)}}).then(l=>{if(l[0]&&alive){conn('自動連線中…（鍵盤需開機並在範圍內）');stopK=keepTrying(l[0],bleOpen,()=>alive&&!link)}})}
   $('#off').onclick=async()=>{const l=link;link=null;await l?.close();shown(false);conn('已斷線')};
   const ser=()=>rng(c.layers,l=>data[l].map(k=>{let t=k.tap,h=k.hold;if(c.escape){if(t.startsWith('T:'))t='T:'+escM(t.slice(2));if(h.startsWith('T:'))h='T:'+escM(h.slice(2))}return t+'^'+h}).join(',')).join('|')+';'+(c.enc?enc[0]+';'+enc[1]:'NOENC;NOENC');
   function parse(s){const s2=s.lastIndexOf(';'),s1=s2>0?s.lastIndexOf(';',s2-1):-1;if(s1<0||s1===s2)return null;
@@ -85,12 +87,13 @@ mount(root){
       j.layers.forEach((L,l)=>{if(!Array.isArray(L)||L.length!==N)throw Error(`Layer ${l} 按鍵數量不正確（需 ${N} 個）`);L.forEach((k,i)=>{data[l][i].tap=String(k.tap||'');data[l][i].hold=String(k.hold||'')})})}
     if(c.enc)enc=[j.encCW||'VUP',j.encCCW||'VDN'];build();mark();toast('✅ 設定已匯入，請確認後寫入鍵盤')}catch(x){toast('❌ 匯入失敗：'+x.message)}};r.readAsText(f)};
   if(!N&&!c.hw)N=12;defaults();if(N)build();
-  return()=>{alive=false;link?.close()};
+  return()=>{alive=false;stopK?.();link?.close()};
 }}}
 
 export const kbMini=make({id:'kbd-minikb',icon:'⌨️',name:'MiniKB',sub:'nRF52840：3 層 × 12 鍵＋旋鈕，USB / BLE',ble:'MiniKB',layers:3,keys:12,enc:true,rows:true,esc:'27',macroMax:46,ver:2,v1:true,file:'miniKB_v2',note:'SuperMini nRF52840 v2 鍵盤設定檔',
  mods:[['Ctrl','CTRL'],['Shift','SHIFT'],['Alt','ALT'],['Win/Cmd','GUI']],
  guide:[{h:'連線方式',li:['<b>USB</b>：Web Serial 115200；連線後等 1.5 秒再讀設定。','<b>BLE</b>：名稱 <code>MiniKB</code>，Nordic UART 服務 <code>6e400001-…</code>；每包 20 bytes，連線後等 1.5 秒再讀。','兩種連線二選一（同時只用一條通道）。']},
+ autoGuide(['只有藍牙 (BLE) 會自動連線；自動連上後會讀取鍵盤目前設定，不會自動寫入。']),
  {h:'設定規則',li:['<code>GET2</code> 讀、<code>CFG2:…</code> 寫，寫入成功回 <code>OK</code>。','3 層（Layer 0–2）× 12 鍵，每鍵有 Tap / Hold；Hold 可設「長按切層」；旋鈕順／逆時針所有層共用。','Macro 字串最多 46 字元。','匯入支援舊版 v1（只有 Layer 0 的 Tap）。']}]});
 export const kbRp=make({id:'kbd-rp2040',icon:'🎹',name:'RP2040 通用鍵盤',sub:'4 層、PIN 手勢解鎖、Macro 語法，僅 USB',ble:null,hw:true,layers:4,enc:false,esc:'M:K:ESC',macroMax:45,escape:true,ver:3,file:'rp2040_key',note:'RP2040 鍵盤設定檔',
  mods:[['Ctrl (左)','LCTRL'],['Ctrl (右)','RCTRL'],['Shift (左)','LSHIFT'],['Shift (右)','RSHIFT'],['Alt (左)','LALT'],['AltGr (右Alt)','RALT'],['Win/Cmd (左)','LGUI'],['Win/Cmd (右)','RGUI']],

@@ -1,5 +1,5 @@
 import {Link} from '../core/link.js';
-import {delay,remember} from '../core/ble.js';
+import {delay,remember,permitted,autoGuide} from '../core/ble.js';
 import {esc} from '../core/ui.js';
 const SVC='4fafc201-1fb5-459e-8fcc-c5c9c331914b',CH='beb5483e-36e1-4688-b7f5-ea07361b26a8',NAME='PWR_SENSOR',PAGE=50,UK='tb.mail.usb';
 export default{
@@ -7,6 +7,7 @@ id:'mailbox',icon:'📬',name:'信箱巡邏',sub:'信箱 Hub：狀態、歷史�
 guide:[
 {h:'連線方式',li:['<b>USB</b>：Web Serial，115200 baud。首次按「USB 連線」授權；之後開啟或重新插上會自動接回，並記住該裝置的 VID/PID，不會誤開其他序列埠。','<b>藍牙</b>：名稱必須是 <code>PWR_SENSOR</code>，服務 <code>4fafc201-…</code>。','自動連線順序：已授權的 <b>USB 優先</b>，其次藍牙。']},
 {h:'配對與重連規則',li:['第一次一定要手動按連線鈕讓瀏覽器取得授權，之後才能自動連線。','Hub 只在按下按鈕、OLED 亮起時才廣播藍牙：<b>開頁面後按一下 Hub 按鈕</b>即可連上；連線最長 5 分鐘會被 Hub 切斷，頁面會自動等下一次廣播。','瀏覽器支援 <code>watchAdvertisements</code> 時等廣播再連；不支援時改為每 3 秒直接嘗試連線。','<b>手動按「斷線」會取消自動重連。</b>','與 IR Hub 共用同一組服務／特徵 UUID，靠<b>裝置名稱</b>區分。']},
+autoGuide(),
 {h:'讀數說明',li:['電池為 LiFePO4，電壓無法線性對應電量：≥3.20 V 正常、3.00–3.20 V 偏低、&lt;3.00 V 請充電。','資訊最多延遲 1 小時；「收到通知」時間優先使用 Hub 隨訊息送出的量測時間。','歷史與推播日誌存在 Hub 的 flash，重新連線後仍查得到。']}],
 mount(root){
   root.innerHTML=`<div class="card"><div class="row wrap"><button class="btn" id="usb">🔌 USB</button><button class="btn pri" id="bt">🔹 藍牙</button><button class="btn dan" id="off">斷線</button></div><div class="status"><i class="dot" id="dot"></i><span id="cs">未連線</span></div></div>
@@ -43,11 +44,7 @@ mount(root){
     try{if(navigator.serial?.getPorts){const ps=await navigator.serial.getPorts();let inf=null;try{inf=JSON.parse(localStorage.getItem(UK))}catch{}
         const p=inf?ps.find(x=>{const i=x.getInfo();return i.usbVendorId===inf.v&&i.usbProductId===inf.p}):ps[0];
         if(p)try{await openUSB(p);return}catch{log('SYS','USB 自動連線失敗')}}
-      if(!navigator.bluetooth)log('SYS','此瀏覽器不支援 Web Bluetooth');
-      else if(!navigator.bluetooth.getDevices)log('SYS','⚠️ 瀏覽器沒有 getDevices()，無法自動重連藍牙：請在 chrome://flags 啟用 #enable-web-bluetooth-new-permissions-backend 後重新啟動 Chrome');
-      else{const all=await navigator.bluetooth.getDevices(),ids=JSON.parse(localStorage.getItem('tb.devs.mailbox')||'[]'),d=all.find(x=>ids.includes(x.id))||all.find(x=>x.name===NAME);
-        if(d){conn('尋找 Hub 中…');log('SYS','找到已授權的藍牙裝置，嘗試連線…');autoBT(d)}
-        else log('SYS',`⚠️ 瀏覽器沒有此網址已授權的藍牙裝置（getDevices 回傳 ${all.length} 筆）。請手動按一次「藍牙」連線；若連過仍如此，請確認沒有清除網站資料、且是同一個網址`)}}
+      const d=(await permitted('mailbox',{name:NAME,say:m=>log('SYS',m)}))[0];if(d){conn('尋找 Hub 中…');log('SYS','找到已授權的藍牙裝置，嘗試連線…');autoBT(d)}}
     finally{busy=false}}
   $('#usb').onclick=async()=>{manual=false;try{await openUSB(await navigator.serial.requestPort())}catch{log('SYS','USB 連線失敗')}};
   $('#bt').onclick=async()=>{manual=false;try{await openBT(await navigator.bluetooth.requestDevice({filters:[{name:NAME}],optionalServices:[SVC]}))}catch{log('SYS','藍牙連線失敗')}};
